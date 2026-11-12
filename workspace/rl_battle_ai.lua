@@ -84,11 +84,15 @@ end
 -- ---------- features ----------
 local function status(r)
     if routing(r) then return 6 end                              -- fleeing
-    if r.u:isFiring() then return 5 end                          -- firing
-    if r.u:isEngaged() then return 4 end                         -- attacking
-    local dx, dy = r.u.battlePosX - r.px, r.u.battlePosY - r.py
-    if dx * dx + dy * dy < 4 then return 3 end                   -- hold
-    return 0
+    local isEngaged = false
+    pcall(function() isEngaged = r.u:isEngaged() end)
+    if isEngaged then return 4 end                               -- attacking in melee
+    local dx, dy = (r.u.battlePosX or 0) - r.px, (r.u.battlePosY or 0) - r.py
+    if dx * dx + dy * dy < 4 then
+        if r.info.missile then return 5 end                      -- firing / missile stance
+        return 3                                                 -- hold
+    end
+    return 0                                                     -- move
 end
 
 local function strength(list, pred)
@@ -166,11 +170,11 @@ local function sparse(gl, r, F, fr)
     for _, o in ipairs(F.enemy) do if active(o) and math.abs(o.u.battlePosX - r.u.battlePosX) < 80 and math.abs(o.u.battlePosY - r.u.battlePosY) < 80 then ne = ne + alive(o) end end
     l[#l + 1] = clamp(nf / 500, 0, 1); l[#l + 1] = clamp(ne / 500, 0, 1)
     -- l has 26 entries: 9 type/capability + 7 stats(+placeholders for missile stats below) + 10 live/proximity
-    l[12] = clamp((p.isMissile and (p.attack or 0) or 0) / 20, 0, 1)                      -- missile attack
-    local okR, rng = pcall(function() return p.range end)                                 -- [VERIFY] attackStats range field name
-    l[13] = okR and clamp((rng or 0) / 250, 0, 1) or 0
-    local okD, def = pcall(function() local d = e.primaryDefenseStats; return d.armour + d.shield end)
-    l[14] = okD and clamp(def / 35, 0, 1) or 0                                            -- total defence
+    local isMissile = info.missile
+    local rng = (e and e.range) or 0
+    l[12] = clamp((isMissile and atk or 0) / 20, 0, 1)                      -- missile attack
+    l[13] = clamp((rng or 0) / 250, 0, 1)                                   -- missile range
+    l[14] = 0.5                                                             -- total defence placeholder
     for i = 1, NL do put(NG + i - 1, l[i] or 0) end
     -- egocentric 8x8 grid, 6 binary channels: friendly, enemy, hold, attacking, firing, fleeing
     local function cell(o, isEnemy)
