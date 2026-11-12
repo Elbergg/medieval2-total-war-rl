@@ -52,6 +52,7 @@ workspace/processed/
 workspace/*.png
 workspace/*.log
 workspace/m2tweop_loaded.txt
+workspace/rl_status.txt
 workspace/wine_crash.log
 workspace/weights_latest.json
 workspace/scenario.json
@@ -59,6 +60,7 @@ workspace/scenario.json
 # Keep trainer source code inside workspace/
 !workspace/trainer/
 !workspace/rl_battle_ai.lua
+!workspace/launch_scenario_battle.py
 
 # OS & Editor files
 .DS_Store
