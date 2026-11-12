@@ -61,10 +61,10 @@ def launch_quick_battle():
     # 3. Wait for tactical battlefield loading
     print("[*] Waiting for tactical battle to load...")
     loaded = False
-    for i in range(45):
+    for i in range(60):
         time.sleep(1)
-        res = run_cmd("docker exec medieval2-ubuntu tail -n 10 /home/tomek/game/logs/system.log.txt")
-        if "data/textures/deployment_area_border" in res.stdout or "data/ui/units/" in res.stdout:
+        res = run_cmd("docker exec medieval2-ubuntu grep -m 1 'deployment_area_border' /home/tomek/game/logs/system.log.txt")
+        if "deployment_area_border" in res.stdout:
             loaded = True
             print(f"[+] Battlefield deployment loaded after {i+1}s!")
             break

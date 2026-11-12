@@ -245,6 +245,16 @@ local function replayFrame(F, t)
     return { t = math.floor(t), grid = rows, units = units }
 end
 
+local function getBattle()
+    if gameDataAll and gameDataAll.get then
+        local gd = gameDataAll.get()
+        if gd and gd.battleStruct then return gd.battleStruct end
+    end
+    if M2TW and M2TW.battle then return M2TW.battle end
+    if BATTLE then return BATTLE end
+    return nil
+end
+
 -- ---------- public hooks ----------
 function M.onBattleAiCommenced()
     local sc = json.decode(readfile(WS .. "scenario.json") or "{}") or {}
@@ -252,7 +262,12 @@ function M.onBattleAiCommenced()
     S = { battleId = sc.battle_id or 0, mode = sc.mode or "vanilla_vs_vanilla", t = 0, nextTick = TICK, done = false,
         W = wtxt and json.decode(wtxt) or nil, frames = {}, tickN = 0 }
     if S.mode == "rl_vs_frozen" then S.WF = json.decode(readfile(WS .. "weights_frozen.json") or "null") end
-    local b = M2TW.battle
+    local b = getBattle()
+    if not b then
+        print("[RL_AI] ERROR: getBattle() returned nil")
+        return
+    end
+    print("[RL_AI] Battle commenced! State=" .. tostring(b.battleState) .. " ID=" .. tostring(S.battleId))
     pcall(function() b.battleSpeed = 6 end)                                 -- [VERIFY] accelerated sim speed
     S.F = collect(b)
     local own, en = S.F[1], S.F[2]
@@ -287,8 +302,9 @@ end
 
 function M.onBattleTick()
     if not S or S.done then return end
-    local b = M2TW.battle
-    local t = b.secondsPassed
+    local b = getBattle()
+    if not b then return end
+    local t = b.secondsPassed or 0
     if b.battleState ~= nil and t < S.nextTick then return end
     S.nextTick = S.nextTick + TICK; S.tickN = S.tickN + 1
     local F = S.F
@@ -338,9 +354,9 @@ end
 function M.onBattleFinished()
     if not S or S.done then return end
     S.done = true
-    local b = M2TW.battle
+    local b = getBattle()
     local won = 1
-    pcall(function() won = b.sides[0].wonBattle end)
+    pcall(function() won = b and b.sides[0].wonBattle or 1 end)
     local units, roster = {}, {}
     for i, r in ipairs(S.F.own) do
         if #r.steps > 0 then units[#units + 1] = { id = i, role = r.role, steps = r.steps } end
@@ -351,8 +367,8 @@ function M.onBattleFinished()
     -- write replay first, episode last (trainer polls for episode files)
     writefile(WS .. string.format("replays/replay_%d.json", S.battleId),
         json.encode({ battle_id = S.battleId, roster = roster, frames = S.frames, result = won - 1 }))
-    writefile(WS .. string.format("episodes/episode_%d.tmp", S.battleId), json.encode(ep))
-    os.rename(WS .. string.format("episodes/episode_%d.tmp", S.battleId), WS .. string.format("episodes/episode_%d.json", S.battleId))
+    writefile(WS .. string.format("episodes/episode_%d.json", S.battleId), json.encode(ep))
+    writefile(WS .. "last_battle_result.txt", string.format("Battle %d finished: result=%d ticks=%d\n", S.battleId, won - 1, S.tickN))
     pcall(function() M2TWEOP.quitGame() end)                                  -- [VERIFY] exit so runner restarts with next scenario
 end
 
