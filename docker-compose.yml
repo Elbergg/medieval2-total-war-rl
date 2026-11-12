@@ -1,0 +1,31 @@
+services:
+  medieval2:
+    build: .
+    image: medieval2-ubuntu:24.04
+    container_name: medieval2-ubuntu
+    hostname: medieval2-ubuntu
+    restart: unless-stopped
+    init: true
+    shm_size: "2gb"
+    environment:
+      - SDL_AUDIODRIVER=dummy
+    volumes:
+      # Hardlinked copy of the Windows game install + M2TWEOP (see setup_game.sh)
+      - ./game:/home/tomek/game
+      - ./wineprefix:/home/tomek/.wine
+      # Shared IPC volume with the trainer
+      - ./workspace:/home/tomek/workspace
+    ulimits:
+      nofile: {soft: 524288, hard: 524288}
+    tty: true
+    stdin_open: true
+
+  trainer:
+    build: ./trainer
+    image: medieval2-trainer:latest
+    container_name: medieval2-trainer
+    restart: unless-stopped
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./workspace:/workspace
