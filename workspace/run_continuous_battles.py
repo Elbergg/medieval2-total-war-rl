@@ -94,6 +94,12 @@ def main():
         success = wait_for_episode(curr_id)
         if success:
             print(f"[+] Battle episode {curr_id} completed successfully!")
+            # Trigger background video render for instant playback
+            rep_file = os.path.join(WORKSPACE, "replays", f"replay_{curr_id}.json")
+            mp4_file = os.path.join(WORKSPACE, "replays", f"replay_{curr_id}.mp4")
+            if os.path.exists(rep_file) and not os.path.exists(mp4_file):
+                print(f"[*] Auto-rendering video for Replay #{curr_id}...")
+                subprocess.Popen([sys.executable, os.path.join(WORKSPACE, "render_replay_video.py"), rep_file, mp4_file])
             # Wait a few seconds for trainer to process
             time.sleep(5)
         else:
