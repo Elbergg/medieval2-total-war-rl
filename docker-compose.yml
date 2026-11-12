@@ -9,6 +9,7 @@ services:
     shm_size: "2gb"
     environment:
       - SDL_AUDIODRIVER=dummy
+      - WORKER_ID=1
     volumes:
       # Hardlinked copy of the Windows game install + M2TWEOP (see setup_game.sh)
       - ./game:/home/tomek/game
@@ -19,6 +20,52 @@ services:
       nofile: {soft: 524288, hard: 524288}
     tty: true
     stdin_open: true
+
+  # Optional Parallel Worker 2 (Spin up via: docker compose --profile workers up -d)
+  medieval2-worker2:
+    image: medieval2-ubuntu:24.04
+    container_name: medieval2-worker2
+    hostname: medieval2-worker2
+    restart: "no"
+    init: true
+    shm_size: "2gb"
+    environment:
+      - SDL_AUDIODRIVER=dummy
+      - WORKER_ID=2
+    volumes:
+      - ./game-2:/home/tomek/game
+      - ./wineprefix-2:/home/tomek/.wine
+      - ./workspace:/home/tomek/workspace
+    ulimits:
+      nofile: {soft: 524288, hard: 524288}
+    tty: true
+    stdin_open: true
+    profiles:
+      - workers
+      - all
+
+  # Optional Parallel Worker 3 (Spin up via: docker compose --profile workers up -d)
+  medieval2-worker3:
+    image: medieval2-ubuntu:24.04
+    container_name: medieval2-worker3
+    hostname: medieval2-worker3
+    restart: "no"
+    init: true
+    shm_size: "2gb"
+    environment:
+      - SDL_AUDIODRIVER=dummy
+      - WORKER_ID=3
+    volumes:
+      - ./game-3:/home/tomek/game
+      - ./wineprefix-3:/home/tomek/.wine
+      - ./workspace:/home/tomek/workspace
+    ulimits:
+      nofile: {soft: 524288, hard: 524288}
+    tty: true
+    stdin_open: true
+    profiles:
+      - workers
+      - all
 
   trainer:
     build: ./trainer

@@ -5,10 +5,12 @@
 
 # Game proprietary binaries and asset packs (from Steam / disk)
 game/
+game-*/
 medieval2/
 steam_dot/
 steam_home/
 wineprefix/
+wineprefix-*/
 *.pack
 *.exe
 *.dll

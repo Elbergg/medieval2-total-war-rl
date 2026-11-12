@@ -13,6 +13,12 @@ import sys
 import time
 import glob
 import subprocess
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--container", default="medieval2-ubuntu", help="Target container name")
+args, _ = parser.parse_known_args()
+CONTAINER = args.container
 
 WORKSPACE = "/home/tomek/medieval2-docker/workspace"
 BASE_DIR = "/home/tomek/medieval2-docker"
@@ -21,36 +27,36 @@ def run_cmd(cmd):
     return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 def is_game_running():
-    res = run_cmd("docker exec medieval2-ubuntu pgrep -f medieval2.exe")
+    res = run_cmd(f"docker exec {CONTAINER} pgrep -f medieval2.exe")
     return res.returncode == 0
 
 def kill_game():
-    run_cmd("docker exec medieval2-ubuntu pkill -9 -f medieval2.exe")
-    run_cmd("docker exec medieval2-ubuntu pkill -9 -f m2tweop_starter.exe")
-    run_cmd("docker exec medieval2-ubuntu wineserver -k")
-    run_cmd("docker exec medieval2-ubuntu pkill -9 -f Xvfb")
+    run_cmd(f"docker exec {CONTAINER} pkill -9 -f medieval2.exe")
+    run_cmd(f"docker exec {CONTAINER} pkill -9 -f m2tweop_starter.exe")
+    run_cmd(f"docker exec {CONTAINER} wineserver -k")
+    run_cmd(f"docker exec {CONTAINER} pkill -9 -f Xvfb")
     time.sleep(2)
 
 def start_game():
-    print("[*] Starting game instance via run_headless.sh...")
+    print(f"[*] Starting game instance on {CONTAINER} via run_headless.sh...")
     # Clean previous run logs and heartbeat
-    run_cmd("docker exec medieval2-ubuntu rm -f /home/tomek/game/logs/system.log.txt /home/tomek/workspace/rl_heartbeat.txt")
-    run_cmd("docker exec -d medieval2-ubuntu bash -c 'cd /home/tomek/game && xvfb-run -a -s \"-screen 0 1024x768x24\" wine m2tweop_starter.exe . > /home/tomek/workspace/m2tweop_starter.log 2>&1'")
+    run_cmd(f"docker exec {CONTAINER} rm -f /home/tomek/game/logs/system.log.txt /home/tomek/workspace/rl_heartbeat.txt")
+    run_cmd(f"docker exec -d {CONTAINER} bash -c 'cd /home/tomek/game && xvfb-run -a -s \"-screen 0 1024x768x24\" wine m2tweop_starter.exe . > /home/tomek/workspace/m2tweop_starter.log 2>&1'")
     
     # Wait for window
     for _ in range(30):
         time.sleep(1)
-        res = run_cmd("docker exec medieval2-ubuntu pgrep -f medieval2.exe")
+        res = run_cmd(f"docker exec {CONTAINER} pgrep -f medieval2.exe")
         if res.returncode == 0:
-            print("[+] medieval2.exe running!")
+            print(f"[+] medieval2.exe running on {CONTAINER}!")
             return True
     return False
 
 def run_battle():
     # Wait for menu to become clickable
     time.sleep(10)
-    print("[*] Launching battle scenario...")
-    res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py")])
+    print(f"[*] Launching battle scenario on {CONTAINER}...")
+    res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py"), "--container", CONTAINER])
     return res.returncode == 0
 
 def wait_for_episode(target_id, timeout=120):

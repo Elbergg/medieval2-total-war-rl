@@ -8,25 +8,32 @@ import os
 import subprocess
 import time
 import glob
+import sys
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--container", default="medieval2-ubuntu", help="Target container name")
+args, _ = parser.parse_known_args()
+CONTAINER = args.container
 
 def run_cmd(cmd):
     return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 def get_x11_env():
     # Find active Xvfb display and Xauthority
-    res = run_cmd("docker exec medieval2-ubuntu ps aux | grep -i Xvfb")
+    res = run_cmd(f"docker exec {CONTAINER} ps aux | grep -i Xvfb")
     for line in res.stdout.splitlines():
         if "Xvfb :" in line:
             parts = line.split("Xvfb :")[1].split()
             disp = ":" + parts[0]
-            auth_res = run_cmd("docker exec medieval2-ubuntu bash -c 'ls -t /tmp/xvfb-run.*/Xauthority 2>/dev/null | head -1'")
+            auth_res = run_cmd(f"docker exec {CONTAINER} bash -c 'ls -t /tmp/xvfb-run.*/Xauthority 2>/dev/null | head -1'")
             auth = auth_res.stdout.strip()
             return disp, auth
     return ":99", "/tmp/Xauthority"
 
 def exec_in_x11(cmd_str):
     disp, auth = get_x11_env()
-    full_cmd = f"docker exec -e DISPLAY={disp} -e XAUTHORITY={auth} medieval2-ubuntu bash -c '{cmd_str}'"
+    full_cmd = f"docker exec -e DISPLAY={disp} -e XAUTHORITY={auth} {CONTAINER} bash -c '{cmd_str}'"
     return run_cmd(full_cmd)
 
 def wait_for_window(name="Medieval 2", timeout=30):
@@ -80,12 +87,21 @@ def launch_quick_battle():
         print("[-] Battlefield load timed out.")
         return False
 
-    time.sleep(3)
-    # 4. Click 'Start Battle' on the deployment radar (x=40, y=590) and press Enter
+    # 4. Click 'Start Battle' and ensure conflict starts
     print("[*] Clicking 'Start Battle' / confirming conflict start...")
-    click_coords(wid, 40, 590, delay=0.5)
-    click_coords(wid, 110, 590, delay=0.5)
-    exec_in_x11(f"xdotool windowfocus --sync {wid} key Return space")
+    for _ in range(8):
+        click_coords(wid, 40, 590, delay=0.5)
+        click_coords(wid, 110, 590, delay=0.5)
+        exec_in_x11(f"xdotool windowfocus --sync {wid} key Return space")
+        time.sleep(1.0)
+        try:
+            with open(heartbeat_path) as f:
+                content = f.read()
+                if "IN_BATTLE=true" in content or "STATE=5" in content:
+                    print("[+] Battle conflict successfully started!")
+                    break
+        except Exception:
+            pass
     return True
 
 if __name__ == "__main__":
