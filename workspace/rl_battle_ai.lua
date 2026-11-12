@@ -373,7 +373,7 @@ function M.onBattleFinished()
     local ep = { battle_id = S.battleId, mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
     -- write replay first, episode last (trainer polls for episode files)
     writefile(WS .. string.format("replays/replay_%d.json", S.battleId),
-        json.encode({ battle_id = S.battleId, roster = roster, frames = S.frames, result = won - 1 }))
+        json.encode({ battle_id = S.battleId, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))
     writefile(WS .. string.format("episodes/episode_%d.json", S.battleId), json.encode(ep))
     writefile(WS .. "last_battle_result.txt", string.format("Battle %d finished: result=%d ticks=%d\n", S.battleId, won - 1, S.tickN))
     pcall(function() M2TWEOP.quitGame() end)                                  -- [VERIFY] exit so runner restarts with next scenario
