@@ -32,8 +32,8 @@ def kill_game():
 
 def start_game():
     print("[*] Starting game instance via run_headless.sh...")
-    # Clean previous run logs
-    run_cmd("docker exec medieval2-ubuntu rm -f /home/tomek/game/logs/system.log.txt")
+    # Clean previous run logs and heartbeat
+    run_cmd("docker exec medieval2-ubuntu rm -f /home/tomek/game/logs/system.log.txt /home/tomek/workspace/rl_heartbeat.txt")
     run_cmd("docker exec -d medieval2-ubuntu bash -c 'cd /home/tomek/game && xvfb-run -a -s \"-screen 0 1024x768x24\" wine m2tweop_starter.exe . > /home/tomek/workspace/m2tweop_starter.log 2>&1'")
     
     # Wait for window

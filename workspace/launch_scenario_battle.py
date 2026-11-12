@@ -61,22 +61,31 @@ def launch_quick_battle():
     # 3. Wait for tactical battlefield loading
     print("[*] Waiting for tactical battle to load...")
     loaded = False
+    heartbeat_path = "/home/tomek/medieval2-docker/workspace/rl_heartbeat.txt"
     for i in range(60):
         time.sleep(1)
-        res = run_cmd("docker exec medieval2-ubuntu grep -m 1 'deployment_area_border' /home/tomek/game/logs/system.log.txt")
-        if "deployment_area_border" in res.stdout:
-            loaded = True
-            print(f"[+] Battlefield deployment loaded after {i+1}s!")
-            break
+        if os.path.exists(heartbeat_path):
+            try:
+                with open(heartbeat_path) as f:
+                    content = f.read()
+                    # STATE > 0 means entered tactical battle (2=delay, 3=deployment, 5=conflict)
+                    if "STATE=" in content and "STATE=0" not in content:
+                        loaded = True
+                        print(f"[+] Battlefield loaded after {i+1}s ({content.strip()})!")
+                        break
+            except Exception:
+                pass
     
     if not loaded:
         print("[-] Battlefield load timed out.")
         return False
 
     time.sleep(3)
-    # 4. Click 'Start Battle' on the deployment radar (x=40, y=590)
-    print("[*] Clicking 'Start Battle' to begin conflict phase...")
-    click_coords(wid, 40, 590, delay=1.0)
+    # 4. Click 'Start Battle' on the deployment radar (x=40, y=590) and press Enter
+    print("[*] Clicking 'Start Battle' / confirming conflict start...")
+    click_coords(wid, 40, 590, delay=0.5)
+    click_coords(wid, 110, 590, delay=0.5)
+    exec_in_x11(f"xdotool windowfocus --sync {wid} key Return space")
     return True
 
 if __name__ == "__main__":
