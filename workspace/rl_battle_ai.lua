@@ -23,9 +23,10 @@ local function clamp(x, a, b) if x < a then return a elseif x > b then return b 
 local function lower(v) return string.lower(tostring(v)) end
 local function classify(u)
     local e = u.eduEntry
-    local cat, cls = lower(e.category), lower(e.class)           -- [VERIFY] string or int; int fallback below
-    local isCav = cat:find("cav") ~= nil or cat == "1"
-    local isMissile = e.primaryStats.isMissile and true or false
+    local cat = lower(e and e.category or "")
+    local cls = lower(e and e.class or "")
+    local isCav = cat:find("cav") ~= nil or cat == "1" or (e and e.mount and e.mount ~= "")
+    local isMissile = (e and e.range and e.range > 0) or (e and e.ammunition and e.ammunition > 0) or false
     local isSpear = cls:find("spear") ~= nil or cls == "3"
     local isHeavy = cls:find("heavy") ~= nil or cls == "1"
     local isGeneral = u.character ~= nil
@@ -92,7 +93,12 @@ end
 
 local function strength(list, pred)
     local s = 0
-    for _, r in ipairs(list) do if active(r) and (not pred or pred(r)) then s = s + alive(r) * (1 + r.info.e.primaryStats.attack / 10) end end
+    for _, r in ipairs(list) do
+        if active(r) and (not pred or pred(r)) then
+            local atk = (r.info.e and r.info.e.aiUnitValuePerSoldier) or 5
+            s = s + alive(r) * (1 + atk / 10)
+        end
+    end
     return s
 end
 
@@ -141,11 +147,13 @@ local function sparse(gl, r, F, fr)
     local out, idx = {}, 0
     local function put(i, v) if v ~= 0 then out[#out + 1] = { i, v } end end
     for i = 1, NG do put(i - 1, gl[i]) end
-    local e, info, p = r.info.e, r.info, r.info.e.primaryStats
+    local e, info = r.info.e, r.info
+    local atk = (e and e.aiUnitValuePerSoldier) or 5
+    local chg = 4
     local l = {
         info.cav and 0 or 1, info.cav and 1 or 0, info.heavy and 1 or 0, (not info.heavy and not info.missile) and 1 or 0,
-        info.missile and 1 or 0, info.spear and 1 or 0, 0, e.canPhalanx and 1 or 0, 0,
-        clamp(p.attack / 25, 0, 1), clamp(p.charge / 15, 0, 1), 0, 0, 0, clamp((e.moveSpeedMod or 1) / 2.5, 0, 1), clamp((e.mass or 1) / 5, 0, 1),
+        info.missile and 1 or 0, info.spear and 1 or 0, 0, (e and e.canPhalanx) and 1 or 0, 0,
+        clamp(atk / 25, 0, 1), clamp(chg / 15, 0, 1), 0, 0, 0, clamp((e and e.moveSpeedMod or 1) / 2.5, 0, 1), clamp((e and e.mass or 1) / 5, 0, 1),
     }
     local rx, ry = toRel(fr, r.u.battlePosX, r.u.battlePosY)
     l[#l + 1] = clamp(rx / 300, -1, 1); l[#l + 1] = clamp(ry / 300, -1, 1)
