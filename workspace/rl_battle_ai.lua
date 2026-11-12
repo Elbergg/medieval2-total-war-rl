@@ -268,7 +268,7 @@ function M.onBattleAiCommenced()
         return
     end
     print("[RL_AI] Battle commenced! State=" .. tostring(b.battleState) .. " ID=" .. tostring(S.battleId))
-    pcall(function() b.battleSpeed = 6 end)                                 -- [VERIFY] accelerated sim speed
+    pcall(function() b.battleSpeed = 15.0 end)                               -- Accelerated sim speed (15x)
     S.F = collect(b)
     local own, en = S.F[1], S.F[2]
     S.F = { own = own, enemy = en, ownStart = 1, enStart = 1 }
@@ -306,6 +306,13 @@ function M.onBattleTick()
     if not b then return end
     local t = b.secondsPassed or 0
     if b.battleState ~= nil and t < S.nextTick then return end
+    pcall(function() b.battleSpeed = 15.0 end)
+    -- Hard timeout safeguard: auto-complete if battle exceeds 600s in-game (~40s wall-clock at 15x)
+    if t >= 600 then
+        print("[RL_AI] Battle reached 600s time cap. Completing episode.")
+        M.onBattleFinished()
+        return
+    end
     S.nextTick = S.nextTick + TICK; S.tickN = S.tickN + 1
     local F = S.F
     totals(F)
