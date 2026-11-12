@@ -27,6 +27,7 @@ def is_game_running():
 def kill_game():
     run_cmd("docker exec medieval2-ubuntu pkill -9 -f medieval2.exe")
     run_cmd("docker exec medieval2-ubuntu pkill -9 -f m2tweop_starter.exe")
+    run_cmd("docker exec medieval2-ubuntu wineserver -k")
     run_cmd("docker exec medieval2-ubuntu pkill -9 -f Xvfb")
     time.sleep(2)
 
@@ -52,7 +53,7 @@ def run_battle():
     res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py")])
     return res.returncode == 0
 
-def wait_for_episode(target_id, timeout=1200):
+def wait_for_episode(target_id, timeout=120):
     start = time.time()
     print(f"[*] Waiting for episode_{target_id}.json (timeout {timeout}s)...")
     while time.time() - start < timeout:
