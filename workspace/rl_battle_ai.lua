@@ -387,6 +387,14 @@ function M.onBattleFinished()
         local s = b and (b.sides[1] or b.sides[0])
         won = s and s.wonBattle or 1
     end)
+    -- If engine hasn't triggered win/loss yet (unresolved / time limit / draw):
+    if won < 0 or won == 1 then
+        if S.F and S.F.ownStart and S.F.ownStart > 0 and S.F.enStart and S.F.enStart > 0 then
+            local ownSurv = S.F.ownAlive / S.F.ownStart
+            local enSurv = S.F.enAlive / S.F.enStart
+            won = (ownSurv >= enSurv) and 2 or 0
+        end
+    end
     local units, roster = {}, {}
     for i, r in ipairs(S.F.own) do
         if #r.steps > 0 then units[#units + 1] = { id = i, role = r.role, steps = r.steps } end
