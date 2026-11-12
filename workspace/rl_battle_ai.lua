@@ -44,17 +44,25 @@ local function roleIndex(role) for i, r in ipairs(ROLES) do if r == role then re
 -- ---------- battle roster ----------
 local function collect(battle)
     local sides = { {}, {} }
-    for si = 0, 1 do
-        local side = battle.sides[si]
-        for ai = 0, side.battleArmyNum - 1 do
-            local army = side:getBattleArmy(ai)
-            for ui = 0, army.unitCount - 1 do
-                local bu = army:getBattleUnit(ui)
-                local u = bu.unit
-                local role, info = classify(u)
-                table.insert(sides[si + 1], { bu = bu, u = u, role = role, ri = roleIndex(role), info = info,
-                    start = math.max(1, bu.soldiersStart), px = u.battlePosX, py = u.battlePosY,
-                    lastKilled = 0, lastLost = 0, steps = {} })
+    for si = 1, 2 do
+        local side = battle.sides[si] or battle.sides[si - 1]
+        if side then
+            local aNum = side.battleArmyNum or side.armiesNum or 1
+            for ai = 0, aNum - 1 do
+                local ok, army = pcall(function() return side:getBattleArmy(ai) end)
+                if ok and army then
+                    local uNum = army.unitCount or 0
+                    for ui = 0, uNum - 1 do
+                        local ok_u, bu = pcall(function() return army:getBattleUnit(ui) end)
+                        if ok_u and bu and bu.unit then
+                            local u = bu.unit
+                            local role, info = classify(u)
+                            table.insert(sides[si], { bu = bu, u = u, role = role, ri = roleIndex(role), info = info,
+                                start = math.max(1, bu.soldiersStart or 1), px = u.battlePosX or 0, py = u.battlePosY or 0,
+                                lastKilled = 0, lastLost = 0, steps = {} })
+                        end
+                    end
+                end
             end
         end
     end
@@ -363,7 +371,10 @@ function M.onBattleFinished()
     S.done = true
     local b = getBattle()
     local won = 1
-    pcall(function() won = b and b.sides[0].wonBattle or 1 end)
+    pcall(function()
+        local s = b and (b.sides[1] or b.sides[0])
+        won = s and s.wonBattle or 1
+    end)
     local units, roster = {}, {}
     for i, r in ipairs(S.F.own) do
         if #r.steps > 0 then units[#units + 1] = { id = i, role = r.role, steps = r.steps } end
