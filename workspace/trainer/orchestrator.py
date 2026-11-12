@@ -68,6 +68,10 @@ def main():
                 penalties = gemini_judge.to_penalties(verdict)
             updates = st.update_from_episode(w, ep, s["phase"], penalties)
             st.save_weights(w, P("weights_latest.json"))
+            # Milestone checkpointing every 10 battles
+            if n % 10 == 0 or n == 1:
+                os.makedirs(P("checkpoints"), exist_ok=True)
+                shutil.copy(P("weights_latest.json"), P("checkpoints", f"weights_battle_{n}.json"))
             (s["recent_frozen"] if s["phase"] == 3 else s["recent"]).append(ep.get("result", 0))
             # curriculum
             if s["phase"] == 1 and n >= PHASE1_BATTLES:
