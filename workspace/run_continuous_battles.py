@@ -60,8 +60,8 @@ def start_game():
     return False
 
 def run_battle():
-    # Wait for menu to become clickable
-    time.sleep(15)
+    # launch_scenario_battle.py waits for M2TWEOP heartbeat before clicking
+    time.sleep(2)
     print(f"[*] Launching battle scenario on {CONTAINER}...")
     res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py"), "--container", CONTAINER])
     return res.returncode == 0
@@ -76,8 +76,9 @@ def wait_for_episode(target_id, start_time, timeout=120):
 
     print(f"[*] Waiting for episode (worker {wid}, timeout {timeout}s)...")
     while time.time() - start < timeout:
-        pattern_ep = os.path.join(WORKSPACE, "episodes", f"episode_{target_id}.json") if wid == "1" else os.path.join(WORKSPACE, "episodes", f"episode_w{wid}_*.json")
-        pattern_proc = os.path.join(WORKSPACE, "processed", f"episode_{target_id}.json") if wid == "1" else os.path.join(WORKSPACE, "processed", f"episode_w{wid}_*.json")
+        pat = "episode_[0-9]*.json" if wid == "1" else f"episode_w{wid}_*.json"
+        pattern_ep = os.path.join(WORKSPACE, "episodes", pat)
+        pattern_proc = os.path.join(WORKSPACE, "processed", pat)
         
         matches = glob.glob(pattern_ep) + glob.glob(pattern_proc)
         for m in matches:

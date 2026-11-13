@@ -57,32 +57,42 @@ def launch_quick_battle():
         return False
     print(f"[+] Found Medieval 2 window ID: {wid}")
 
-    # 1. Click 'Single Player' (x=239, y=233)
-    print("[*] Clicking Single Player...")
-    click_coords(wid, 239, 233, delay=1.5)
-
-    # 2. Click 'Quick Battle' (x=239, y=395)
-    print("[*] Clicking Quick Battle (randomized factions & armies)...")
-    click_coords(wid, 239, 395, delay=2.0)
-
-    # 3. Wait for tactical battlefield loading
-    print(f"[*] Waiting for tactical battle to load on {CONTAINER}...")
-    loaded = False
     wid_tag = "1"
     if "worker2" in CONTAINER:
         wid_tag = "2"
     elif "worker3" in CONTAINER:
         wid_tag = "3"
-        
-    heartbeat_paths = [f"/home/tomek/medieval2-docker/workspace/rl_heartbeat_{wid_tag}.txt"]
-    if wid_tag == "1":
-        heartbeat_paths.append("/home/tomek/medieval2-docker/workspace/rl_heartbeat.txt")
-    for i in range(60):
+    hb_path = f"/home/tomek/medieval2-docker/workspace/rl_heartbeat_{wid_tag}.txt"
+
+    # 0. Wait until M2TWEOP draw() is alive (heartbeat exists) so menu is actually ready
+    print(f"[*] Waiting for M2TWEOP menu heartbeat on {CONTAINER} ({hb_path})...")
+    menu_ready = False
+    for _ in range(45):
+        if os.path.exists(hb_path):
+            menu_ready = True
+            break
         time.sleep(1)
-        for hb_p in heartbeat_paths:
-            if os.path.exists(hb_p):
+    if not menu_ready:
+        print("[-] Timed out waiting for M2TWEOP heartbeat.")
+        return False
+    time.sleep(2.0)
+
+    # 1-2. Click Single Player -> Quick Battle (retry up to 3 times if still STATE=0)
+    loaded = False
+    for attempt in range(3):
+        print(f"[*] Clicking Single Player (attempt {attempt + 1})...")
+        click_coords(wid, 239, 233, delay=1.5)
+        print("[*] Clicking Quick Battle (randomized factions & armies)...")
+        click_coords(wid, 239, 395, delay=2.0)
+
+        # 3. Wait for tactical battlefield loading (STATE != 0)
+        print(f"[*] Waiting for tactical battle to load on {CONTAINER}...")
+        wait_secs = 25 if attempt < 2 else 45
+        for i in range(wait_secs):
+            time.sleep(1)
+            if os.path.exists(hb_path):
                 try:
-                    with open(hb_p) as f:
+                    with open(hb_path) as f:
                         content = f.read()
                         if "STATE=" in content and "STATE=0" not in content:
                             loaded = True
@@ -92,29 +102,26 @@ def launch_quick_battle():
                     pass
         if loaded:
             break
-    
+
     if not loaded:
         print("[-] Battlefield load timed out.")
         return False
 
-    # 4. Click 'Start Battle' and ensure conflict starts
-    print("[*] Clicking 'Start Battle' / confirming conflict start...")
-    for _ in range(8):
-        click_coords(wid, 40, 590, delay=0.5)
-        click_coords(wid, 110, 590, delay=0.5)
-        exec_in_x11(f"xdotool windowfocus --sync {wid} key Return space")
-        time.sleep(1.0)
-        try:
-            for hb_p in heartbeat_paths:
-                if os.path.exists(hb_p):
-                    with open(hb_p) as f:
-                        content = f.read()
-                        if "IN_BATTLE=true" in content or "STATE=5" in content:
-                            print(f"[+] Battle conflict on {CONTAINER} successfully started!")
-                            return True
-        except Exception:
-            pass
-    return True
+    # 4. Wait for pre-battle speech / deployment (STATE=2/3) to auto-enter conflict (STATE=5)
+    print("[*] Waiting for conflict start (STATE=5 / IN_BATTLE=true)...")
+    for i in range(30):
+        time.sleep(1)
+        if os.path.exists(hb_path):
+            try:
+                with open(hb_path) as f:
+                    content = f.read()
+                    if "IN_BATTLE=true" in content or "STATE=5" in content:
+                        print(f"[+] Battle conflict on {CONTAINER} successfully started ({i+1}s)!")
+                        return True
+            except Exception:
+                pass
+    print("[-] Timed out waiting for STATE=5 / IN_BATTLE=true.")
+    return False
 
 if __name__ == "__main__":
-    launch_quick_battle()
+    sys.exit(0 if launch_quick_battle() else 1)
