@@ -50,40 +50,49 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
         sy = MAP_Y0 + int(((wy - min_y) / span_y) * (MAP_H - 80)) + 40
         return max(MAP_X0 + 10, min(MAP_X0 + MAP_W - 10, sx)), max(MAP_Y0 + 10, min(MAP_Y0 + MAP_H - 10, sy))
 
-    # Parse units: [side, id, x, y, hp_percent, morale, status, lastAction, symbol]
+    # Parse units: [side, id, x, y, hp_percent, morale, status, lastAction, symbol, (optional) fleeing]
     units = frame.get("units", [])
     blue_count, red_count = 0, 0
     blue_hp, red_hp = 0, 0
+    blue_flee, red_flee = 0, 0
     
     for u in units:
         side, uid, wx, wy, hp, morale, st, action, sym = u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8]
+        fleeing = bool(u[9]) if len(u) > 9 else (st == 6 or morale == 0)
         sx, sy = to_screen(wx, wy)
         is_blue = (side == 1)
         
         if is_blue:
             blue_count += (1 if hp > 0 else 0)
             blue_hp += hp
-            color = (60, 160, 255)
-            border_color = (120, 210, 255)
+            blue_flee += (1 if hp > 0 and fleeing else 0)
+            color = (45, 95, 145) if fleeing else (60, 160, 255)
+            border_color = (255, 200, 50) if fleeing else (120, 210, 255)
         else:
             red_count += (1 if hp > 0 else 0)
             red_hp += hp
-            color = (235, 65, 65)
-            border_color = (255, 130, 130)
+            red_flee += (1 if hp > 0 and fleeing else 0)
+            color = (145, 50, 50) if fleeing else (235, 65, 65)
+            border_color = (255, 200, 50) if fleeing else (255, 130, 130)
             
         if hp <= 0:
             continue
             
         # Draw unit badge
         R = 14
-        draw.ellipse([sx - R, sy - R, sx + R, sy + R], fill=color, outline=border_color, width=2)
+        draw.ellipse([sx - R, sy - R, sx + R, sy + R], fill=color, outline=border_color, width=3 if fleeing else 2)
+        if fleeing:
+            draw.line([(sx - R + 3, sy - R + 3), (sx + R - 3, sy + R - 3)], fill=(255, 200, 50), width=2)
         
         # Symbol
         role_txt = sym[0].upper() if sym else "U"
         draw.text((sx - 4, sy - 7), role_txt, fill=(255, 255, 255))
         
         # Status text & HP bar
-        st_name, st_col = STATUS_NAMES.get(st, ("IDLE", (200, 200, 200)))
+        if fleeing:
+            st_name, st_col = "FLEE", (255, 200, 50)
+        else:
+            st_name, st_col = STATUS_NAMES.get(st, ("IDLE", (200, 200, 200)))
         draw.text((sx - 16, sy + R + 2), f"{st_name}", fill=st_col)
         
         # HP bar
@@ -102,11 +111,11 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
     draw.text((320, 14), f"TIME: {t:.1f}s / {total_t:.1f}s", fill=(200, 255, 120))
     
     # Side indicators
-    draw.rectangle([600, 10, 800, 40], fill=(20, 35, 55), outline=(60, 120, 200))
-    draw.text((615, 18), f"RL AGENT: {blue_count} units ({blue_hp} HP)", fill=(100, 200, 255))
+    draw.rectangle([575, 10, 805, 40], fill=(20, 35, 55), outline=(60, 120, 200))
+    draw.text((585, 18), f"RL: {blue_count}u ({blue_hp}HP, {blue_flee} flee)", fill=(100, 200, 255))
     
-    draw.rectangle([830, 10, 1030, 40], fill=(50, 20, 20), outline=(200, 70, 70))
-    draw.text((845, 18), f"ENEMY: {red_count} units ({red_hp} HP)", fill=(255, 120, 120))
+    draw.rectangle([820, 10, 1060, 40], fill=(50, 20, 20), outline=(200, 70, 70))
+    draw.text((830, 18), f"EN: {red_count}u ({red_hp}HP, {red_flee} flee)", fill=(255, 120, 120))
     
     # Right Sidebar (Legend & Info)
     SIDE_X0 = 1000
@@ -158,7 +167,10 @@ def expand_frames_for_duration(frames, target_secs=30.0, fps=10):
                 ny = ua[3] + alpha * (ub[3] - ua[3])
                 nhp = int(round(ua[4] + alpha * (ub[4] - ua[4])))
                 src = ua if alpha < 0.5 else ub
-                interp_units.append([ua[0], ua[1], nx, ny, nhp, src[5], src[6], src[7], ua[8]])
+                row = [ua[0], ua[1], nx, ny, nhp, src[5], src[6], src[7], ua[8]]
+                if len(src) > 9:
+                    row.append(src[9])
+                interp_units.append(row)
             else:
                 interp_units.append(ua)
         nt = fa.get("t", 0) + alpha * (fb.get("t", 0) - fa.get("t", 0))

@@ -251,7 +251,7 @@ local function replayFrame(F, t)
             local x, y = r.u.battlePosX, r.u.battlePosY
             minx, miny, maxx, maxy = math.min(minx, x), math.min(miny, y), math.max(maxx, x), math.max(maxy, y)
             local sym = SYM[r.role]; if side == 2 then sym = string.lower(sym) end
-            units[#units + 1] = { side, i, math.floor(x), math.floor(y), math.floor(100 * alive(r) / r.start), r.u.moraleLevel or 0, status(r), r.lastAction or -1, sym }
+            units[#units + 1] = { side, i, math.floor(x), math.floor(y), math.floor(100 * alive(r) / r.start), r.u.moraleLevel or 0, status(r), r.lastAction or -1, sym, routing(r) and 1 or 0 }
         end
     end
     local grid = {}
