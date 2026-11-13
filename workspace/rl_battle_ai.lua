@@ -389,6 +389,7 @@ function M.onBattleTick()
     -- Early battle completion: decisive rout, or 1800s (30m) on every 10th battle / 600s (10m) otherwise
     local timeCap = S.longBattle and 1800 or 600
     if t >= timeCap or (t >= 60 and F and (F.ownAlive <= 0.2 * F.ownStart or F.enAlive <= 0.2 * F.enStart)) then
+        S.timedOut = (t >= timeCap) and not (F and F.enAlive <= 0.2 * F.enStart)
         print("[RL_AI] Battle reached decisive conclusion or " .. tostring(timeCap) .. "s cap. Completing episode.")
         M.onBattleFinished()
         return
@@ -465,7 +466,14 @@ function M.onBattleFinished()
     local wid_f = io.open("youneuoy_Data/plugins/lua/worker_id.txt", "r")
     if wid_f then wid = wid_f:read("*l") or "1"; wid_f:close() end
     local fileTag = (wid == "1") and tostring(S.battleId) or string.format("w%s_%d_%d", wid, S.battleId, os.time())
-    local ep = { battle_id = S.battleId, long_battle = S.longBattle, replay_file = string.format("replay_%s.json", fileTag), mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
+    local enDmgFrac = (S.F and S.F.enStart and S.F.enStart > 0)
+        and clamp((S.F.enStart - (S.F.enAlive or 0)) / S.F.enStart, 0, 1) or 0
+    local decisiveWin = (won - 1 == 1) and (not S.timedOut)
+    local ep = {
+        battle_id = S.battleId, long_battle = S.longBattle, decisive_win = decisiveWin,
+        enemy_damage_frac = enDmgFrac, replay_file = string.format("replay_%s.json", fileTag),
+        mode = S.mode, result = won - 1, tick_seconds = TICK, units = units,
+    }
     -- write replay first, episode last (trainer polls for episode files)
     writefile(WS .. string.format("replays/replay_%s.json", fileTag),
         json.encode({ battle_id = S.battleId, long_battle = S.longBattle, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))

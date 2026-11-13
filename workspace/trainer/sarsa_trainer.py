@@ -5,7 +5,7 @@ import numpy as np
 from spec import NUM_ACTIONS, NUM_FEATURES, NUM_ROLES, ROLES, imitation_reward
 
 GAMMA, LAMBDA, ALPHA = 0.995, 0.95, 0.01
-W_LOC, W_GLOB, W_MAP, TERMINAL = 0.1, 2.0, 1.0, 150.0
+W_LOC, W_GLOB, W_MAP, TERMINAL, DECISIVE_BONUS = 0.1, 2.0, 1.0, 150.0, 300.0
 
 
 def new_weights():
@@ -69,6 +69,9 @@ def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0, 
     result = ep.get("result", 0)
     tick = ep.get("tick_seconds", 3.0)
     alpha_eff = ALPHA * weight_mult
+    decisive_bonus = 0.0
+    if result > 0 and ep.get("decisive_win") and ep.get("enemy_damage_frac", 0.0) >= 0.5:
+        decisive_bonus = DECISIVE_BONUS * float(ep["enemy_damage_frac"])
     n_updates = 0
     for u in ep["units"]:
         role, steps = u["role"], u["steps"]
@@ -78,7 +81,7 @@ def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0, 
         E = {}  # action -> (dense trace)
         for t, s in enumerate(steps):
             last = t == len(steps) - 1
-            terminal = (TERMINAL * result + llm_terminal_penalty) if (last and phase != 1) else 0.0
+            terminal = (TERMINAL * result + decisive_bonus + llm_terminal_penalty) if (last and phase != 1) else 0.0
             pen = 0.0
             for p in penalties or []:
                 if p["role"] in (role, "any") and p["action"] == s["a"] and p["t_start"] <= t * tick <= p["t_end"]:
