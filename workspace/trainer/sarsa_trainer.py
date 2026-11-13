@@ -4,8 +4,8 @@ import os
 import numpy as np
 from spec import NUM_ACTIONS, NUM_FEATURES, NUM_ROLES, ROLES, imitation_reward
 
-GAMMA, LAMBDA, ALPHA = 0.97, 0.85, 0.01
-W_LOC, W_GLOB, W_MAP, TERMINAL = 1.0, 1.0, 0.5, 50.0
+GAMMA, LAMBDA, ALPHA = 0.995, 0.95, 0.01
+W_LOC, W_GLOB, W_MAP, TERMINAL = 0.1, 2.0, 1.0, 150.0
 
 
 def new_weights():
@@ -32,7 +32,7 @@ def step_reward(step, phase, terminal=0.0, llm_penalty=0.0):
     """Phase 1: imitation only. Phase 2/3: combat+map (+terminal) only; imitation is gone entirely."""
     if phase == 1:
         return imitation_reward(step["a"], step.get("disp"), step.get("vq"))
-    r = (W_LOC * (step.get("dk", 0.0) - step.get("dl", 0.0))
+    r = (W_LOC * (step.get("dk", 0.0) - 0.25 * step.get("dl", 0.0))
          + W_GLOB * step.get("gc", 0.0) + W_MAP * step.get("gm", 0.0))
     return r + terminal + llm_penalty
 
