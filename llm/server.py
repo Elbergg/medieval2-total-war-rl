@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 
 PROMPT = """You are a tactical judge reviewing a Medieval II: Total War battle replay.
 Each frame shows time `t` (seconds) and units for side 0 (our RL agent) and side 1 (enemy): role, position (x,y), men alive, state.
@@ -59,14 +59,24 @@ def evaluate_replay(replay_text):
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set in medieval2-llm container")
     from google import genai
+    import time
     client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=PROMPT + replay_text,
-        config={"response_mime_type": "application/json"},
-    )
-    raw = json.loads(resp.text)
-    return score_verdict(raw)
+    candidates = [GEMINI_MODEL, "gemini-3.7-flash", "gemini-3.5-flash"]
+    last_err = None
+    for idx, model in enumerate(candidates):
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=PROMPT + replay_text,
+                config={"response_mime_type": "application/json"},
+            )
+            raw = json.loads(resp.text)
+            return score_verdict(raw)
+        except Exception as e:
+            last_err = e
+            if idx < len(candidates) - 1:
+                time.sleep(2)
+    raise last_err
 
 
 class Handler(BaseHTTPRequestHandler):
