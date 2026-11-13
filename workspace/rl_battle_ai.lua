@@ -327,9 +327,9 @@ function M.onBattleTick()
     local t = b.secondsPassed or 0
     if b.battleState ~= nil and t < S.nextTick then return end
     pcall(function() b.battleSpeed = 150.0 end)
-    -- Early battle completion: decisive rout or 300s time cap
-    if t >= 300 or (t >= 60 and F and (F.ownAlive <= 0.2 * F.ownStart or F.enAlive <= 0.2 * F.enStart)) then
-        print("[RL_AI] Battle reached decisive conclusion or 300s cap. Completing episode.")
+    -- Early battle completion: decisive rout or 600s (10 in-game min) time cap
+    if t >= 600 or (t >= 60 and F and (F.ownAlive <= 0.2 * F.ownStart or F.enAlive <= 0.2 * F.enStart)) then
+        print("[RL_AI] Battle reached decisive conclusion or 600s cap. Completing episode.")
         M.onBattleFinished()
         return
     end

@@ -21,7 +21,7 @@ import scenario_generator as sg
 ROOT = os.environ.get("WORKSPACE", "/workspace")
 P = lambda *a: os.path.join(ROOT, *a)
 PHASE1_BATTLES = 50
-P2_TO_P3_WINRATE, P3_PROMOTE_WINRATE, JUDGE_EVERY = 0.75, 0.55, 100
+P2_TO_P3_WINRATE, P3_PROMOTE_WINRATE, JUDGE_EVERY = 0.75, 0.55, 10
 MODES = {1: "vanilla_vs_vanilla", 2: "rl_vs_vanilla", 3: "rl_vs_frozen"}
 
 
@@ -60,13 +60,23 @@ def main():
             s["battle"] += 1
             n = s["battle"]
             penalties = None
-            replay = P("replays", f"replay_{ep.get('battle_id', n)}.json")
-            if n % JUDGE_EVERY == 0 and os.environ.get("GEMINI_API_KEY") and os.path.exists(replay):
-                import gemini_judge
-                verdict = gemini_judge.judge(replay)
-                json.dump(verdict, open(P("processed", f"verdict_{n}.json"), "w"), indent=1)
-                penalties = gemini_judge.to_penalties(verdict)
-            updates = st.update_from_episode(w, ep, s["phase"], penalties)
+            llm_terminal = 0.0
+            rep_name = ep.get("replay_file") or f"replay_{ep.get('battle_id', n)}.json"
+            replay = P("replays", rep_name)
+            if n % JUDGE_EVERY == 0 and os.path.exists(replay):
+                try:
+                    import llm_judge
+                    verdict = llm_judge.judge(replay, battle_id=n)
+                    json.dump(verdict, open(P("processed", f"verdict_{n}.json"), "w"), indent=1)
+                    llm_terminal = verdict["penalties"]["total"]
+                    print(
+                        f"llm_judge battle {n}: fair={verdict['fairness']}/10 hist={verdict['historical_accuracy']}/10 "
+                        f"reas={verdict['reasonability']}/10 penalty={llm_terminal}",
+                        flush=True,
+                    )
+                except Exception as e:
+                    print(f"llm_judge battle {n} failed: {e}", flush=True)
+            updates = st.update_from_episode(w, ep, s["phase"], penalties, llm_terminal)
             st.save_weights(w, P("weights_latest.json"))
             # Milestone checkpointing every 10 battles
             if n % 10 == 0 or n == 1:

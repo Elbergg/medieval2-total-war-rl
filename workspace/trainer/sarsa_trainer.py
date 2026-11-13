@@ -56,10 +56,11 @@ def update_phase1(w, ep):
     return n
 
 
-def update_from_episode(w, ep, phase, penalties=None):
+def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0):
     if phase == 1:
         return update_phase1(w, ep)
-    """penalties: list of dicts {role, action, t_start, t_end, penalty} from the LLM judge (bounded, not a wipe-out)."""
+    """penalties: list of dicts {role, action, t_start, t_end, penalty} from the LLM judge;
+    llm_terminal_penalty: summed negative squared score in [-300, 0] applied at battle end."""
     result = ep.get("result", 0)
     tick = ep.get("tick_seconds", 3.0)
     n_updates = 0
@@ -71,7 +72,7 @@ def update_from_episode(w, ep, phase, penalties=None):
         E = {}  # action -> (dense trace)
         for t, s in enumerate(steps):
             last = t == len(steps) - 1
-            terminal = TERMINAL * result if (last and phase != 1) else 0.0
+            terminal = (TERMINAL * result + llm_terminal_penalty) if (last and phase != 1) else 0.0
             pen = 0.0
             for p in penalties or []:
                 if p["role"] in (role, "any") and p["action"] == s["a"] and p["t_start"] <= t * tick <= p["t_end"]:

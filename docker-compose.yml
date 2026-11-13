@@ -67,12 +67,25 @@ services:
       - workers
       - all
 
+  llm:
+    build: ./llm
+    image: medieval2-llm:latest
+    container_name: medieval2-llm
+    hostname: llm
+    restart: unless-stopped
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+
   trainer:
     build: ./trainer
     image: medieval2-trainer:latest
     container_name: medieval2-trainer
     restart: unless-stopped
+    depends_on:
+      - llm
     environment:
+      - LLM_URL=http://llm:8000
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - ./workspace:/workspace
