@@ -200,6 +200,7 @@ end
 
 -- ---------- policy ----------
 local function qvalue(W, ri, a, feats)
+    if not W or not W[ri] or not W[ri][a + 1] then return 0 end
     local row = W[ri][a + 1]; local q = 0
     for _, f in ipairs(feats) do q = q + (row[f[1] + 1] or 0) * f[2] end
     return q

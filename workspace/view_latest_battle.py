@@ -59,6 +59,7 @@ def get_latest_replay_file(target_id=None):
         matches = sorted(glob.glob(os.path.join(REPLAYS_DIR, f"replay_w*_{target_id}_*.json")), key=os.path.getmtime)
         if matches:
             return matches[-1]
+        print(f"[-] Replay #{target_id} not found (parallel workers increment battle_id in steps). Showing latest instead.")
     files = sorted(glob.glob(os.path.join(REPLAYS_DIR, "replay_*.json")), key=os.path.getmtime)
     return files[-1] if files else None
 
