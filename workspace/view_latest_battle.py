@@ -39,8 +39,13 @@ MODE_DESCRIPTIONS = {
         f"{CYAN}{BOLD}OUR RL AI (Linear SARSA(λ) Learner){RESET}",
         f"{RED}{BOLD}DEFAULT ENGINE AI (Native Vanilla C++ AI){RESET}"
     ),
+    "rl_vs_vanilla_disadvantaged": (
+        "Phase 3: Disadvantaged RL vs Game Engine",
+        f"{CYAN}{BOLD}OUR RL AI (Handicapped: 70% Men or -1 Stats / +3 Enemy){RESET}",
+        f"{RED}{BOLD}DEFAULT ENGINE AI (Native Vanilla C++ AI){RESET}"
+    ),
     "rl_vs_frozen": (
-        "Phase 3: Self-Play Against Frozen Checkpoint",
+        "Phase 4: Self-Play Against Frozen Checkpoint",
         f"{CYAN}{BOLD}OUR RL AI (Active Learner){RESET}",
         f"{BLUE}{BOLD}FROZEN OPPONENT (Past RL AI Generation){RESET}"
     )
@@ -51,6 +56,9 @@ def get_latest_replay_file(target_id=None):
         p = os.path.join(REPLAYS_DIR, f"replay_{target_id}.json")
         if os.path.exists(p):
             return p
+        matches = sorted(glob.glob(os.path.join(REPLAYS_DIR, f"replay_w*_{target_id}_*.json")), key=os.path.getmtime)
+        if matches:
+            return matches[-1]
     files = sorted(glob.glob(os.path.join(REPLAYS_DIR, "replay_*.json")), key=os.path.getmtime)
     return files[-1] if files else None
 
@@ -161,7 +169,7 @@ def print_summary(data, replay_path):
 
 def main():
     parser = argparse.ArgumentParser(description="View latest battle replay and distinguish AI versions.")
-    parser.add_argument("--id", type=int, default=None, help="Specific battle ID to view")
+    parser.add_argument("--id", type=str, default=None, help="Specific battle ID or tag (e.g. 250 or w2_250_...) to view")
     parser.add_argument("--open", action="store_true", help="Open the rendered video with desktop video player")
     parser.add_argument("--no-render", action="store_true", help="Skip rendering MP4 video")
     args = parser.parse_args()
