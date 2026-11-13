@@ -16,7 +16,7 @@ HEIGHT = 720
 FPS = 5
 
 ROLE_NAMES = {
-    "I": "INF", "S": "SPEAR", "A": "ARCHER", "C": "CAV", "G": "GEN"
+    "I": "INF", "S": "SPEAR", "A": "ARCHER", "C": "CAV", "G": "GEN", "T": "ARTY"
 }
 
 STATUS_NAMES = {

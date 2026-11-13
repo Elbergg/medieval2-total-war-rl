@@ -14,7 +14,11 @@ def new_weights():
 
 def load_weights(path):
     if os.path.exists(path):
-        return np.array(json.load(open(path)), dtype=np.float64)
+        w = np.array(json.load(open(path)), dtype=np.float64)
+        if w.shape[0] < NUM_ROLES:
+            pad = np.zeros((NUM_ROLES - w.shape[0], NUM_ACTIONS, NUM_FEATURES), dtype=np.float64)
+            w = np.concatenate([w, pad], axis=0)
+        return w
     return new_weights()
 
 

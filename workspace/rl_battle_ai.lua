@@ -8,7 +8,7 @@ local WS = "Z:/home/tomek/workspace/"          -- Wine drive Z: = Linux root; sh
 local TICK = 3.0
 local NA, NG, NL, GRID, GCH = 13, 20, 26, 8, 6
 local NF = NG + NL + GRID * GRID * GCH           -- 430
-local ROLES = { "line_inf", "spear_inf", "missile_foot", "shock_cav", "missile_cav", "general" }
+local ROLES = { "line_inf", "spear_inf", "missile_foot", "shock_cav", "missile_cav", "general", "artillery" }
 local MOVES = { [0] = { 0, 60 }, { -45, 45 }, { 45, 45 }, { -60, 0 }, { 60, 0 }, { -45, -45 }, { 45, -45 }, { 0, -60 }, { 0, 0 } }
 local MORALE_ROUTING = 0                         -- [VERIFY] moraleLevel value meaning "routing"
 local EPS = { learner = 0.10, frozen = 0.02 }
@@ -26,13 +26,15 @@ local function classify(u, bu)
     local cat = e and e.category or -1
     local cls = e and e.class or -1
     local combo = e and e.categoryClassCombo or -1
+    local isArtillery = (cat == 2)
     local isCav = (cat == 1) or (combo == 5 or combo == 6 or combo == 7)
-    local isMissile = (combo == 4 or combo == 7) or (cls == 4 or cls == 2)
+    local isMissile = isArtillery or (combo == 4 or combo == 7) or (cls == 4 or cls == 2)
     local isSpear = (combo == 3) or (cls == 3)
     local isHeavy = (combo == 2 or combo == 6) or (cls == 0)
     local isGeneral = (bu and (bu.isGeneral == 1 or bu.isGeneral == true)) or (u.character ~= nil)
     local role
     if isGeneral then role = "general"
+    elseif isArtillery then role = "artillery"
     elseif isCav and isMissile then role = "missile_cav"
     elseif isCav then role = "shock_cav"
     elseif isMissile then role = "missile_foot"
@@ -242,7 +244,7 @@ local function issue(a, r, F, fr)
 end
 
 -- ---------- replay ----------
-local SYM = { line_inf = "I", spear_inf = "S", missile_foot = "A", shock_cav = "C", missile_cav = "C", general = "G" }
+local SYM = { line_inf = "I", spear_inf = "S", missile_foot = "A", shock_cav = "C", missile_cav = "C", general = "G", artillery = "T" }
 local ST = { [6] = "R", [5] = "F", [4] = "A", [3] = "H" }
 local function replayFrame(F, t)
     local units, minx, miny, maxx, maxy = {}, 1e9, 1e9, -1e9, -1e9

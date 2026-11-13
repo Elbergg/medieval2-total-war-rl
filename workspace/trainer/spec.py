@@ -8,7 +8,7 @@ GRID = 8
 GRID_CH = 6  # friendly, enemy, hold, attacking, firing, fleeing
 NUM_GRID = GRID * GRID * GRID_CH  # 384
 NUM_FEATURES = NUM_GLOBAL + NUM_LOCAL + NUM_GRID  # 430
-ROLES = ["line_inf", "spear_inf", "missile_foot", "shock_cav", "missile_cav", "general"]
+ROLES = ["line_inf", "spear_inf", "missile_foot", "shock_cav", "missile_cav", "general", "artillery"]
 NUM_ROLES = len(ROLES)
 
 # Movement offsets (x_right, y_fwd) in metres, army frame. a8 = hold, a9..a12 = attack front/left/right/rear
