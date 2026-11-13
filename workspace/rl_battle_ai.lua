@@ -401,12 +401,16 @@ function M.onBattleFinished()
         roster[#roster + 1] = { side = 0, id = i, role = r.role, start = r.start }
     end
     for i, r in ipairs(S.F.enemy) do roster[#roster + 1] = { side = 1, id = i, role = r.role, start = r.start } end
-    local ep = { battle_id = S.battleId, mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
+    local wid = "1"
+    local wid_f = io.open("youneuoy_Data/plugins/lua/worker_id.txt", "r")
+    if wid_f then wid = wid_f:read("*l") or "1"; wid_f:close() end
+    local fileTag = (wid == "1") and tostring(S.battleId) or string.format("w%s_%d_%d", wid, S.battleId, os.time())
+    local ep = { battle_id = S.battleId, replay_file = string.format("replay_%s.json", fileTag), mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
     -- write replay first, episode last (trainer polls for episode files)
-    writefile(WS .. string.format("replays/replay_%d.json", S.battleId),
+    writefile(WS .. string.format("replays/replay_%s.json", fileTag),
         json.encode({ battle_id = S.battleId, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))
-    writefile(WS .. string.format("episodes/episode_%d.json", S.battleId), json.encode(ep))
-    writefile(WS .. "last_battle_result.txt", string.format("Battle %d finished: result=%d ticks=%d\n", S.battleId, won - 1, S.tickN))
+    writefile(WS .. string.format("episodes/episode_%s.json", fileTag), json.encode(ep))
+    writefile(WS .. string.format("last_battle_result_%s.txt", wid), string.format("Battle %d finished: result=%d ticks=%d\n", S.battleId, won - 1, S.tickN))
     pcall(function() M2TWEOP.quitGame() end)                                  -- [VERIFY] exit so runner restarts with next scenario
 end
 

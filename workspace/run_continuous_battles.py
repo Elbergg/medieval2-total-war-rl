@@ -38,10 +38,17 @@ def kill_game():
     time.sleep(2)
 
 def start_game():
+    wid = "1"
+    if "worker2" in CONTAINER:
+        wid = "2"
+    elif "worker3" in CONTAINER:
+        wid = "3"
     print(f"[*] Starting game instance on {CONTAINER} via run_headless.sh...")
-    # Clean previous run logs and heartbeat
-    run_cmd(f"docker exec {CONTAINER} rm -f /home/tomek/game/logs/system.log.txt /home/tomek/workspace/rl_heartbeat.txt")
-    run_cmd(f"docker exec -d {CONTAINER} bash -c 'cd /home/tomek/game && xvfb-run -a -s \"-screen 0 1024x768x24\" wine m2tweop_starter.exe . > /home/tomek/workspace/m2tweop_starter.log 2>&1'")
+    # Clean previous run logs and heartbeat for this specific worker
+    run_cmd(f"docker exec {CONTAINER} rm -f /home/tomek/game/logs/system.log.txt /home/tomek/workspace/rl_heartbeat_{wid}.txt")
+    if wid == "1":
+        run_cmd(f"docker exec {CONTAINER} rm -f /home/tomek/workspace/rl_heartbeat.txt")
+    run_cmd(f"docker exec -d {CONTAINER} bash -c 'cd /home/tomek/game && xvfb-run -a -s \"-screen 0 1024x768x24\" wine m2tweop_starter.exe . > /home/tomek/workspace/m2tweop_starter_{CONTAINER}.log 2>&1'")
     
     # Wait for window
     for _ in range(30):
@@ -54,38 +61,51 @@ def start_game():
 
 def run_battle():
     # Wait for menu to become clickable
-    time.sleep(10)
+    time.sleep(15)
     print(f"[*] Launching battle scenario on {CONTAINER}...")
     res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py"), "--container", CONTAINER])
     return res.returncode == 0
 
-def wait_for_episode(target_id, timeout=120):
+def wait_for_episode(target_id, start_time, timeout=120):
     start = time.time()
-    print(f"[*] Waiting for episode_{target_id}.json (timeout {timeout}s)...")
+    wid = "1"
+    if "worker2" in CONTAINER:
+        wid = "2"
+    elif "worker3" in CONTAINER:
+        wid = "3"
+
+    print(f"[*] Waiting for episode (worker {wid}, timeout {timeout}s)...")
     while time.time() - start < timeout:
-        ep_file = os.path.join(WORKSPACE, "episodes", f"episode_{target_id}.json")
-        proc_file = os.path.join(WORKSPACE, "processed", f"episode_{target_id}.json")
-        if os.path.exists(ep_file) or os.path.exists(proc_file):
-            print(f"[+] Episode {target_id} produced!")
-            return True
+        pattern_ep = os.path.join(WORKSPACE, "episodes", f"episode_{target_id}.json") if wid == "1" else os.path.join(WORKSPACE, "episodes", f"episode_w{wid}_*.json")
+        pattern_proc = os.path.join(WORKSPACE, "processed", f"episode_{target_id}.json") if wid == "1" else os.path.join(WORKSPACE, "processed", f"episode_w{wid}_*.json")
+        
+        matches = glob.glob(pattern_ep) + glob.glob(pattern_proc)
+        for m in matches:
+            try:
+                if os.path.getmtime(m) >= start_time - 2.0:
+                    tag = os.path.basename(m).replace("episode_", "").replace(".json", "")
+                    print(f"[+] Episode {os.path.basename(m)} produced!")
+                    return True, tag
+            except Exception:
+                pass
         # Also check if game died unexpectedly
         if not is_game_running():
             print("[-] Game process terminated before episode dump.")
-            return False
-        time.sleep(5)
-    print(f"[-] Timed out waiting for episode {target_id}.")
-    return False
+            return False, None
+        time.sleep(4)
+    print(f"[-] Timed out waiting for episode.")
+    return False, None
 
 def main():
     os.chdir(BASE_DIR)
-    print("[+] Starting RL Battle Supervisor loop...")
+    print(f"[+] Starting RL Battle Supervisor loop for {CONTAINER}...")
     while True:
         # Determine current battle ID from processed + episodes
         existing = glob.glob(os.path.join(WORKSPACE, "processed", "episode_*.json")) + \
                    glob.glob(os.path.join(WORKSPACE, "episodes", "episode_*.json"))
         curr_id = len(existing) + 1
         print(f"\n==========================================")
-        print(f"   STARTING BATTLE EPISODE {curr_id}")
+        print(f"   STARTING BATTLE ON {CONTAINER} (ID est. {curr_id})")
         print(f"==========================================")
         
         kill_game()
@@ -94,23 +114,24 @@ def main():
             time.sleep(10)
             continue
             
+        start_battle_time = time.time()
         if not run_battle():
             print("[-] Battle launch failed, restarting...")
             continue
             
-        success = wait_for_episode(curr_id)
-        if success:
-            print(f"[+] Battle episode {curr_id} completed successfully!")
+        success, tag = wait_for_episode(curr_id, start_battle_time)
+        if success and tag:
+            print(f"[+] Battle episode on {CONTAINER} completed successfully (tag={tag})!")
             # Trigger background video render for instant playback
-            rep_file = os.path.join(WORKSPACE, "replays", f"replay_{curr_id}.json")
-            mp4_file = os.path.join(WORKSPACE, "replays", f"replay_{curr_id}.mp4")
+            rep_file = os.path.join(WORKSPACE, "replays", f"replay_{tag}.json")
+            mp4_file = os.path.join(WORKSPACE, "replays", f"replay_{tag}.mp4")
             if os.path.exists(rep_file) and not os.path.exists(mp4_file):
-                print(f"[*] Auto-rendering video for Replay #{curr_id}...")
+                print(f"[*] Auto-rendering video for Replay #{tag}...")
                 subprocess.Popen([sys.executable, os.path.join(WORKSPACE, "render_replay_video.py"), rep_file, mp4_file])
             # Wait a few seconds for trainer to process
-            time.sleep(5)
+            time.sleep(4)
         else:
-            print(f"[-] Episode {curr_id} failed or timed out.")
+            print(f"[-] Episode on {CONTAINER} failed or timed out.")
             
         kill_game()
         time.sleep(3)

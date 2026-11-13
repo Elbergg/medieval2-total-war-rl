@@ -66,22 +66,32 @@ def launch_quick_battle():
     click_coords(wid, 239, 395, delay=2.0)
 
     # 3. Wait for tactical battlefield loading
-    print("[*] Waiting for tactical battle to load...")
+    print(f"[*] Waiting for tactical battle to load on {CONTAINER}...")
     loaded = False
-    heartbeat_path = "/home/tomek/medieval2-docker/workspace/rl_heartbeat.txt"
+    wid_tag = "1"
+    if "worker2" in CONTAINER:
+        wid_tag = "2"
+    elif "worker3" in CONTAINER:
+        wid_tag = "3"
+        
+    heartbeat_paths = [f"/home/tomek/medieval2-docker/workspace/rl_heartbeat_{wid_tag}.txt"]
+    if wid_tag == "1":
+        heartbeat_paths.append("/home/tomek/medieval2-docker/workspace/rl_heartbeat.txt")
     for i in range(60):
         time.sleep(1)
-        if os.path.exists(heartbeat_path):
-            try:
-                with open(heartbeat_path) as f:
-                    content = f.read()
-                    # STATE > 0 means entered tactical battle (2=delay, 3=deployment, 5=conflict)
-                    if "STATE=" in content and "STATE=0" not in content:
-                        loaded = True
-                        print(f"[+] Battlefield loaded after {i+1}s ({content.strip()})!")
-                        break
-            except Exception:
-                pass
+        for hb_p in heartbeat_paths:
+            if os.path.exists(hb_p):
+                try:
+                    with open(hb_p) as f:
+                        content = f.read()
+                        if "STATE=" in content and "STATE=0" not in content:
+                            loaded = True
+                            print(f"[+] Battlefield loaded on {CONTAINER} after {i+1}s ({content.strip()})!")
+                            break
+                except Exception:
+                    pass
+        if loaded:
+            break
     
     if not loaded:
         print("[-] Battlefield load timed out.")
@@ -95,11 +105,13 @@ def launch_quick_battle():
         exec_in_x11(f"xdotool windowfocus --sync {wid} key Return space")
         time.sleep(1.0)
         try:
-            with open(heartbeat_path) as f:
-                content = f.read()
-                if "IN_BATTLE=true" in content or "STATE=5" in content:
-                    print("[+] Battle conflict successfully started!")
-                    break
+            for hb_p in heartbeat_paths:
+                if os.path.exists(hb_p):
+                    with open(hb_p) as f:
+                        content = f.read()
+                        if "IN_BATTLE=true" in content or "STATE=5" in content:
+                            print(f"[+] Battle conflict on {CONTAINER} successfully started!")
+                            return True
         except Exception:
             pass
     return True
