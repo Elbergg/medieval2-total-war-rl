@@ -10,7 +10,7 @@ local NA, NG, NL, GRID, GCH = 13, 20, 26, 8, 6
 local NF = NG + NL + GRID * GRID * GCH           -- 430
 local ROLES = { "line_inf", "spear_inf", "missile_foot", "shock_cav", "missile_cav", "general", "artillery" }
 local MOVES = { [0] = { 0, 60 }, { -45, 45 }, { 45, 45 }, { -60, 0 }, { 60, 0 }, { -45, -45 }, { 45, -45 }, { 0, -60 }, { 0, 0 } }
-local MORALE_ROUTING = 0                         -- [VERIFY] moraleLevel value meaning "routing"
+local MORALE_ROUTING = 6                         -- moraleStatus.routing = 6 (0 is berserk)
 local EPS = { learner = 0.10, frozen = 0.02 }
 
 local S = nil  -- per-battle state
@@ -85,14 +85,28 @@ local function centroid(list)
 end
 
 -- ---------- features ----------
-local function status(r)
+local function inMissileRange(r, foes)
+    if not r.info.missile or (r.u.currentAmmo or 0) <= 0 or not foes then return false end
+    local rng = (r.info.e and r.info.e.range and r.info.e.range > 0) and r.info.e.range or 160
+    local r2 = rng * rng
+    local rx, ry = r.u.battlePosX or 0, r.u.battlePosY or 0
+    for _, f in ipairs(foes) do
+        if alive(f) > 0 then
+            local fx, fy = (f.u.battlePosX or 0) - rx, (f.u.battlePosY or 0) - ry
+            if fx * fx + fy * fy <= r2 then return true end
+        end
+    end
+    return false
+end
+
+local function status(r, foes)
     if routing(r) then return 6 end                              -- fleeing
     local isEngaged = false
     pcall(function() isEngaged = r.u:isEngaged() end)
     if isEngaged then return 4 end                               -- attacking in melee
     local dx, dy = (r.u.battlePosX or 0) - r.px, (r.u.battlePosY or 0) - r.py
     if dx * dx + dy * dy < 4 then
-        if r.info.missile then return 5 end                      -- firing / missile stance
+        if inMissileRange(r, foes) then return 5 end             -- firing (has ammo + enemy in range)
         return 3                                                 -- hold
     end
     return 0                                                     -- move
@@ -187,7 +201,7 @@ local function sparse(gl, r, F, fr)
         if gx < -100 or gx >= 100 or gy < -100 or gy >= 100 then return end
         local c, rr = math.floor((gx + 100) / 25), math.floor((gy + 100) / 25)
         local base = NG + NL + (rr * GRID + c) * GCH
-        local st = status(o)
+        local st = status(o, isEnemy and F.own or F.enemy)
         local seen = {}
         local function once(i) if not seen[i] then seen[i] = true; out[#out + 1] = { i, 1 } end end
         once(base + (isEnemy and 1 or 0))
@@ -254,7 +268,8 @@ local function replayFrame(F, t)
             local x, y = r.u.battlePosX, r.u.battlePosY
             minx, miny, maxx, maxy = math.min(minx, x), math.min(miny, y), math.max(maxx, x), math.max(maxy, y)
             local sym = SYM[r.role]; if side == 2 then sym = string.lower(sym) end
-            units[#units + 1] = { side, i, math.floor(x), math.floor(y), math.floor(100 * alive(r) / r.start), r.u.moraleLevel or 0, status(r), r.lastAction or -1, sym, routing(r) and 1 or 0 }
+            local foes = (side == 1) and F.enemy or F.own
+            units[#units + 1] = { side, i, math.floor(x), math.floor(y), math.floor(100 * alive(r) / r.start), r.u.moraleLevel or 0, status(r, foes), r.lastAction or -1, sym, routing(r) and 1 or 0 }
         end
     end
     local grid = {}

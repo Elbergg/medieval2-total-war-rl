@@ -58,7 +58,7 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
     
     for u in units:
         side, uid, wx, wy, hp, morale, st, action, sym = u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8]
-        fleeing = bool(u[9]) if len(u) > 9 else (st == 6 or morale == 0)
+        fleeing = bool(u[9]) if len(u) > 9 else (st == 6 or morale == 6)
         sx, sy = to_screen(wx, wy)
         is_blue = (side == 1)
         
