@@ -276,6 +276,42 @@ local function getBattle()
     return nil
 end
 
+local function applyDisadvantage(own, en, battleId)
+    local numerical = (battleId % 2 == 0)
+    local appliedNum = false
+    if numerical then
+        for _, r in ipairs(own) do
+            if r.role ~= "general" then
+                local before = r.u.soldierCountBattleMap or r.start
+                local target = math.max(1, math.floor(before * 0.70))
+                pcall(function() r.u.soldierCountBattleMap = target end)
+                local after = r.u.soldierCountBattleMap or before
+                if after < before then
+                    r.start = after
+                    appliedNum = true
+                end
+            end
+        end
+    end
+    if not numerical or not appliedNum then
+        -- Quality disadvantage: buff enemy attack/armour (+3) and wind/weaken own units
+        for _, r in ipairs(en) do
+            pcall(function()
+                r.u.armourInBattle = (r.u.armourInBattle or 0) + 3
+                r.u.attackInBattle = (r.u.attackInBattle or 0) + 3
+            end)
+        end
+        for _, r in ipairs(own) do
+            pcall(function()
+                r.u.armourInBattle = math.max(0, (r.u.armourInBattle or 0) - 1)
+                r.u.attackInBattle = math.max(1, (r.u.attackInBattle or 1) - 1)
+                r.u.fatigue = 30
+            end)
+        end
+    end
+    print("[RL_AI] Phase 3 disadvantage applied (" .. (appliedNum and "numerical 70%" or "quality +3 enemy / -1 & winded own") .. ")")
+end
+
 -- ---------- public hooks ----------
 function M.onBattleAiCommenced()
     local sc = json.decode(readfile(WS .. "scenario.json") or "{}") or {}
@@ -292,6 +328,9 @@ function M.onBattleAiCommenced()
     pcall(function() b.battleSpeed = 100.0 end)                              -- Maximum 100x simulation speed
     S.F = collect(b)
     local own, en = S.F[1], S.F[2]
+    if S.mode == "rl_vs_vanilla_disadvantaged" then
+        applyDisadvantage(own, en, S.battleId)
+    end
     S.F = { own = own, enemy = en, ownStart = 1, enStart = 1 }
     for _, r in ipairs(own) do S.F.ownStart = S.F.ownStart + r.start end
     for _, r in ipairs(en) do S.F.enStart = S.F.enStart + r.start end

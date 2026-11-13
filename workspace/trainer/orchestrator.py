@@ -21,8 +21,13 @@ import scenario_generator as sg
 ROOT = os.environ.get("WORKSPACE", "/workspace")
 P = lambda *a: os.path.join(ROOT, *a)
 PHASE1_BATTLES = 50
-P2_TO_P3_WINRATE, P3_PROMOTE_WINRATE, JUDGE_EVERY = 0.75, 0.55, 10
-MODES = {1: "vanilla_vs_vanilla", 2: "rl_vs_vanilla", 3: "rl_vs_frozen"}
+P2_TO_P3_WINRATE, P3_TO_P4_WINRATE, P4_PROMOTE_WINRATE, JUDGE_EVERY = 0.75, 0.60, 0.55, 10
+MODES = {
+    1: "vanilla_vs_vanilla",
+    2: "rl_vs_vanilla",
+    3: "rl_vs_vanilla_disadvantaged",
+    4: "rl_vs_frozen",
+}
 
 
 def load_state():
@@ -82,14 +87,17 @@ def main():
             if n % 10 == 0 or n == 1:
                 os.makedirs(P("checkpoints"), exist_ok=True)
                 shutil.copy(P("weights_latest.json"), P("checkpoints", f"weights_battle_{n}.json"))
-            (s["recent_frozen"] if s["phase"] == 3 else s["recent"]).append(ep.get("result", 0))
+            (s["recent_frozen"] if s["phase"] == 4 else s["recent"]).append(ep.get("result", 0))
             # curriculum
             if s["phase"] == 1 and n >= PHASE1_BATTLES:
                 s["phase"] = 2  # imitation disappears entirely
             elif s["phase"] == 2 and len(s["recent"]) >= 50 and winrate(s["recent"]) > P2_TO_P3_WINRATE:
                 s["phase"] = 3
+                s["recent"].clear()
+            elif s["phase"] == 3 and len(s["recent"]) >= 50 and winrate(s["recent"]) > P3_TO_P4_WINRATE:
+                s["phase"] = 4
                 shutil.copy(P("weights_latest.json"), P("weights_frozen.json"))
-            elif s["phase"] == 3 and n % JUDGE_EVERY == 0 and winrate(s["recent_frozen"]) > P3_PROMOTE_WINRATE:
+            elif s["phase"] == 4 and n % 100 == 0 and winrate(s["recent_frozen"]) > P4_PROMOTE_WINRATE:
                 shutil.copy(P("weights_latest.json"), P("weights_frozen.json"))
             shutil.move(path, P("processed", os.path.basename(path)))
             sg.write_scenario(P("scenario.json"), n + 1, MODES[s["phase"]])
