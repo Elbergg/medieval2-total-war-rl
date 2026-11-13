@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 PROMPT = """You are a tactical judge reviewing a Medieval II: Total War battle replay.
 Each frame shows time `t` (seconds) and units for side 0 (our RL agent) and side 1 (enemy): role, position (x,y), men alive, state.
@@ -61,7 +61,7 @@ def evaluate_replay(replay_text):
     from google import genai
     import time
     client = genai.Client(api_key=api_key)
-    candidates = [GEMINI_MODEL, "gemini-3.7-flash", "gemini-3.5-flash"]
+    candidates = [GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-3.5-flash"]
     last_err = None
     for idx, model in enumerate(candidates):
         try:
