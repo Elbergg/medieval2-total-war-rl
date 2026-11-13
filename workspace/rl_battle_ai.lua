@@ -21,15 +21,16 @@ local function clamp(x, a, b) if x < a then return a elseif x > b then return b 
 
 -- ---------- unit classification ----------
 local function lower(v) return string.lower(tostring(v)) end
-local function classify(u)
+local function classify(u, bu)
     local e = u.eduEntry
-    local cat = lower(e and e.category or "")
-    local cls = lower(e and e.class or "")
-    local isCav = cat:find("cav") ~= nil or cat == "1" or (e and e.mount and e.mount ~= "")
-    local isMissile = (e and e.range and e.range > 0) or (e and e.ammunition and e.ammunition > 0) or false
-    local isSpear = cls:find("spear") ~= nil or cls == "3"
-    local isHeavy = cls:find("heavy") ~= nil or cls == "1"
-    local isGeneral = u.character ~= nil
+    local cat = e and e.category or -1
+    local cls = e and e.class or -1
+    local combo = e and e.categoryClassCombo or -1
+    local isCav = (cat == 1) or (combo == 5 or combo == 6 or combo == 7)
+    local isMissile = (combo == 4 or combo == 7) or (cls == 4 or cls == 2)
+    local isSpear = (combo == 3) or (cls == 3)
+    local isHeavy = (combo == 2 or combo == 6) or (cls == 0)
+    local isGeneral = (bu and bu.isGeneral) or (u.character ~= nil)
     local role
     if isGeneral then role = "general"
     elseif isCav and isMissile then role = "missile_cav"
@@ -57,7 +58,7 @@ local function collect(battle)
                         local ok_u, bu = pcall(function() return army:getBattleUnit(ui) end)
                         if ok_u and bu and bu.unit then
                             local u = bu.unit
-                            local role, info = classify(u)
+                            local role, info = classify(u, bu)
                             table.insert(sides[si], { bu = bu, u = u, role = role, ri = roleIndex(role), info = info,
                                 start = math.max(1, bu.soldiersStart or 1), px = u.battlePosX or 0, py = u.battlePosY or 0,
                                 lastKilled = 0, lastLost = 0, steps = {} })
