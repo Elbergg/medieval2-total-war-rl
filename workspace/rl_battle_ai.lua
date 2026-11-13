@@ -417,7 +417,7 @@ function M.onBattleTick()
         actSide(F.enemy, S.WF, EPS.frozen, efr, globalFeatures(eF, efr, t), eF, false)
     end
     for _, list in ipairs({ F.own, F.enemy }) do for _, r in ipairs(list) do r.px, r.py = r.u.battlePosX, r.u.battlePosY end end
-    if S.tickN % 3 == 1 then S.frames[#S.frames + 1] = replayFrame(F, t) end
+    if S.longBattle or (S.tickN % 3 == 1) then S.frames[#S.frames + 1] = replayFrame(F, t) end
 end
 
 function M.onBattleFinished()
@@ -450,7 +450,7 @@ function M.onBattleFinished()
     local ep = { battle_id = S.battleId, long_battle = S.longBattle, replay_file = string.format("replay_%s.json", fileTag), mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
     -- write replay first, episode last (trainer polls for episode files)
     writefile(WS .. string.format("replays/replay_%s.json", fileTag),
-        json.encode({ battle_id = S.battleId, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))
+        json.encode({ battle_id = S.battleId, long_battle = S.longBattle, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))
     writefile(WS .. string.format("episodes/episode_%s.json", fileTag), json.encode(ep))
     writefile(WS .. string.format("last_battle_result_%s.txt", wid), string.format("Battle %d finished: result=%d ticks=%d\n", S.battleId, won - 1, S.tickN))
     pcall(function() M2TWEOP.quitGame() end)                                  -- [VERIFY] exit so runner restarts with next scenario

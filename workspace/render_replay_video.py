@@ -137,6 +137,35 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
         
     return img
 
+def expand_frames_for_duration(frames, target_secs=30.0, fps=10):
+    """Interpolate unit (x, y, hp) between keyframes so the output video lasts target_secs at fps."""
+    if len(frames) < 2:
+        return frames
+    total_out = int(round(target_secs * fps))
+    out = []
+    n = len(frames)
+    for k in range(total_out):
+        pos = k * (n - 1) / max(1, total_out - 1)
+        i = min(n - 2, int(pos))
+        alpha = pos - i
+        fa, fb = frames[i], frames[i + 1]
+        b_map = {(u[0], u[1]): u for u in fb.get("units", [])}
+        interp_units = []
+        for ua in fa.get("units", []):
+            ub = b_map.get((ua[0], ua[1]))
+            if ub:
+                nx = ua[2] + alpha * (ub[2] - ua[2])
+                ny = ua[3] + alpha * (ub[3] - ua[3])
+                nhp = int(round(ua[4] + alpha * (ub[4] - ua[4])))
+                src = ua if alpha < 0.5 else ub
+                interp_units.append([ua[0], ua[1], nx, ny, nhp, src[5], src[6], src[7], ua[8]])
+            else:
+                interp_units.append(ua)
+        nt = fa.get("t", 0) + alpha * (fb.get("t", 0) - fa.get("t", 0))
+        out.append({"t": round(nt, 1), "units": interp_units})
+    return out
+
+
 def render_replay(json_path, output_mp4=None):
     if not os.path.exists(json_path):
         print(f"[-] Replay file {json_path} not found.")
@@ -151,10 +180,14 @@ def render_replay(json_path, output_mp4=None):
         return False
         
     battle_id = data.get("battle_id", 1)
+    is_long = bool(data.get("long_battle")) or (isinstance(battle_id, int) and battle_id % 10 == 0)
+    fps = 10 if is_long else FPS
+    if is_long:
+        frames = expand_frames_for_duration(frames, target_secs=30.0, fps=fps)
     if not output_mp4:
         output_mp4 = json_path.replace(".json", ".mp4")
         
-    print(f"[*] Rendering {len(frames)} frames for Battle #{battle_id} to {output_mp4}...")
+    print(f"[*] Rendering {len(frames)} frames ({len(frames)/fps:.1f}s @ {fps}fps) for Battle #{battle_id} to {output_mp4}...")
     
     # Calculate global bounding box
     min_x, max_x, min_y, max_y = 1e9, -1e9, 1e9, -1e9
@@ -172,7 +205,7 @@ def render_replay(json_path, output_mp4=None):
     container_out = output_mp4.replace("/home/tomek/medieval2-docker/workspace", "/home/tomek/workspace")
     cmd = (
         f"docker exec -i medieval2-ubuntu ffmpeg -y "
-        f"-f rawvideo -vcodec rawvideo -s {WIDTH}x{HEIGHT} -pix_fmt rgb24 -r {FPS} -i - "
+        f"-f rawvideo -vcodec rawvideo -s {WIDTH}x{HEIGHT} -pix_fmt rgb24 -r {fps} -i - "
         f"-c:v libx264 -preset fast -pix_fmt yuv420p {container_out}"
     )
     
