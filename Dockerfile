@@ -9,7 +9,7 @@ RUN dpkg --add-architecture i386 && \
         ca-certificates curl wget sudo locales xvfb xauth x11-utils \
         wine wine32:i386 wine64 libwine libwine:i386 winbind cabextract \
         libgl1 libgl1:i386 libvulkan1 libvulkan1:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 \
-        procps tmux nano python3 xdotool imagemagick \
+        procps tmux nano python3 xdotool imagemagick ffmpeg \
     && locale-gen en_US.UTF-8 && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
