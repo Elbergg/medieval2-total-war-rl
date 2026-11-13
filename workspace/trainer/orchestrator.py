@@ -66,22 +66,25 @@ def main():
             n = s["battle"]
             penalties = None
             llm_terminal = 0.0
+            is_judge_battle = bool(ep.get("long_battle")) or (n % JUDGE_EVERY == 0)
+            weight_mult = 3.0 if is_judge_battle else 1.0
             rep_name = ep.get("replay_file") or f"replay_{ep.get('battle_id', n)}.json"
             replay = P("replays", rep_name)
-            if n % JUDGE_EVERY == 0 and os.path.exists(replay):
+            if is_judge_battle and os.path.exists(replay):
                 try:
                     import llm_judge
                     verdict = llm_judge.judge(replay, battle_id=n)
                     json.dump(verdict, open(P("processed", f"verdict_{n}.json"), "w"), indent=1)
                     llm_terminal = verdict["penalties"]["total"]
                     print(
-                        f"llm_judge battle {n}: fair={verdict['fairness']}/10 hist={verdict['historical_accuracy']}/10 "
+                        f"llm_judge battle {n} (long={ep.get('long_battle')}, weight_mult={weight_mult}x): "
+                        f"fair={verdict['fairness']}/10 hist={verdict['historical_accuracy']}/10 "
                         f"reas={verdict['reasonability']}/10 penalty={llm_terminal}",
                         flush=True,
                     )
                 except Exception as e:
                     print(f"llm_judge battle {n} failed: {e}", flush=True)
-            updates = st.update_from_episode(w, ep, s["phase"], penalties, llm_terminal)
+            updates = st.update_from_episode(w, ep, s["phase"], penalties, llm_terminal, weight_mult)
             st.save_weights(w, P("weights_latest.json"))
             # Milestone checkpointing every 10 battles
             if n % 10 == 0 or n == 1:

@@ -66,7 +66,7 @@ def run_battle():
     res = subprocess.run([sys.executable, os.path.join(WORKSPACE, "launch_scenario_battle.py"), "--container", CONTAINER])
     return res.returncode == 0
 
-def wait_for_episode(target_id, start_time, timeout=120):
+def wait_for_episode(target_id, start_time, timeout=180):
     start = time.time()
     wid = "1"
     if "worker2" in CONTAINER:

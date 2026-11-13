@@ -317,6 +317,7 @@ function M.onBattleAiCommenced()
     local sc = json.decode(readfile(WS .. "scenario.json") or "{}") or {}
     local wtxt = readfile(WS .. "weights_latest.json")
     S = { battleId = sc.battle_id or 0, mode = sc.mode or "vanilla_vs_vanilla", t = 0, nextTick = TICK, done = false,
+        longBattle = ((sc.battle_id or 0) % 10 == 0),
         W = wtxt and json.decode(wtxt) or nil, frames = {}, tickN = 0 }
     if S.mode == "rl_vs_frozen" then S.WF = json.decode(readfile(WS .. "weights_frozen.json") or "null") end
     local b = getBattle()
@@ -367,9 +368,10 @@ function M.onBattleTick()
     local t = b.secondsPassed or 0
     if b.battleState ~= nil and t < S.nextTick then return end
     pcall(function() b.battleSpeed = 150.0 end)
-    -- Early battle completion: decisive rout or 600s (10 in-game min) time cap
-    if t >= 600 or (t >= 60 and F and (F.ownAlive <= 0.2 * F.ownStart or F.enAlive <= 0.2 * F.enStart)) then
-        print("[RL_AI] Battle reached decisive conclusion or 600s cap. Completing episode.")
+    -- Early battle completion: decisive rout, or 1800s (30m) on every 10th battle / 600s (10m) otherwise
+    local timeCap = S.longBattle and 1800 or 600
+    if t >= timeCap or (t >= 60 and F and (F.ownAlive <= 0.2 * F.ownStart or F.enAlive <= 0.2 * F.enStart)) then
+        print("[RL_AI] Battle reached decisive conclusion or " .. tostring(timeCap) .. "s cap. Completing episode.")
         M.onBattleFinished()
         return
     end
@@ -445,7 +447,7 @@ function M.onBattleFinished()
     local wid_f = io.open("youneuoy_Data/plugins/lua/worker_id.txt", "r")
     if wid_f then wid = wid_f:read("*l") or "1"; wid_f:close() end
     local fileTag = (wid == "1") and tostring(S.battleId) or string.format("w%s_%d_%d", wid, S.battleId, os.time())
-    local ep = { battle_id = S.battleId, replay_file = string.format("replay_%s.json", fileTag), mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
+    local ep = { battle_id = S.battleId, long_battle = S.longBattle, replay_file = string.format("replay_%s.json", fileTag), mode = S.mode, result = won - 1, tick_seconds = TICK, units = units }
     -- write replay first, episode last (trainer polls for episode files)
     writefile(WS .. string.format("replays/replay_%s.json", fileTag),
         json.encode({ battle_id = S.battleId, mode = S.mode, roster = roster, frames = S.frames, result = won - 1 }))

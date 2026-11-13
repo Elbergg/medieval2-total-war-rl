@@ -56,13 +56,15 @@ def update_phase1(w, ep):
     return n
 
 
-def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0):
+def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0, weight_mult=1.0):
     if phase == 1:
         return update_phase1(w, ep)
     """penalties: list of dicts {role, action, t_start, t_end, penalty} from the LLM judge;
-    llm_terminal_penalty: summed negative squared score in [-300, 0] applied at battle end."""
+    llm_terminal_penalty: summed negative squared score in [-300, 0] applied at battle end;
+    weight_mult: multiplier on learning rate ALPHA (e.g. 3.0 on 30-min LLM-judged battles)."""
     result = ep.get("result", 0)
     tick = ep.get("tick_seconds", 3.0)
+    alpha_eff = ALPHA * weight_mult
     n_updates = 0
     for u in ep["units"]:
         role, steps = u["role"], u["steps"]
@@ -92,6 +94,6 @@ def update_from_episode(w, ep, phase, penalties=None, llm_terminal_penalty=0.0):
             tr[idx] += val
             norm = max(1.0, val.sum())
             for a, tr_a in E.items():
-                w[ri, a] += (ALPHA / norm) * delta * tr_a
+                w[ri, a] += (alpha_eff / norm) * delta * tr_a
             n_updates += 1
     return n_updates
