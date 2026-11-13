@@ -30,7 +30,7 @@ local function classify(u, bu)
     local isMissile = (combo == 4 or combo == 7) or (cls == 4 or cls == 2)
     local isSpear = (combo == 3) or (cls == 3)
     local isHeavy = (combo == 2 or combo == 6) or (cls == 0)
-    local isGeneral = (bu and bu.isGeneral) or (u.character ~= nil)
+    local isGeneral = (bu and (bu.isGeneral == 1 or bu.isGeneral == true)) or (u.character ~= nil)
     local role
     if isGeneral then role = "general"
     elseif isCav and isMissile then role = "missile_cav"
