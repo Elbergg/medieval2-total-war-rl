@@ -86,8 +86,11 @@ end
 
 -- ---------- features ----------
 local function inMissileRange(r, foes)
-    if not r.info.missile or (r.u.currentAmmo or 0) <= 0 or not foes then return false end
-    local rng = (r.info.e and r.info.e.range and r.info.e.range > 0) and r.info.e.range or 160
+    if not r.info.missile or not foes then return false end
+    -- M2TWEOP reports maxAmmo=0/currentAmmo=0 for siege artillery; only gate on currentAmmo when maxAmmo > 0
+    if (r.u.maxAmmo or 0) > 0 and (r.u.currentAmmo or 0) <= 0 then return false end
+    local defaultRng = (r.role == "artillery") and 300 or 160
+    local rng = (r.info.e and r.info.e.range and r.info.e.range > 0) and r.info.e.range or defaultRng
     local r2 = rng * rng
     local rx, ry = r.u.battlePosX or 0, r.u.battlePosY or 0
     for _, f in ipairs(foes) do
