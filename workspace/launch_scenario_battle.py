@@ -47,7 +47,7 @@ def wait_for_window(name="Medieval 2", timeout=30):
     return None
 
 def click_coords(wid, x, y, delay=0.5):
-    exec_in_x11(f"xdotool mousemove --window {wid} {x} {y} click 1")
+    exec_in_x11(f"xdotool windowfocus {wid} mousemove {x} {y} click 1")
     time.sleep(delay)
 
 def launch_quick_battle():
@@ -75,18 +75,18 @@ def launch_quick_battle():
     if not menu_ready:
         print("[-] Timed out waiting for M2TWEOP heartbeat.")
         return False
-    time.sleep(5.0)
+    time.sleep(1.0)
 
     # 1-2. Click Single Player -> Quick Battle (retry up to 3 times if still STATE=0)
     loaded = False
     for attempt in range(3):
         if attempt > 0:
-            # Return to main menu if stuck in Single Player submenu (left '<' arrow; harmless on main menu)
-            click_coords(wid, 25, 400, delay=1.5)
+            # Return to main menu if stuck in Single Player submenu (BACK button at bottom-left)
+            click_coords(wid, 65, 745, delay=1.0)
         print(f"[*] Clicking Single Player (attempt {attempt + 1})...")
-        click_coords(wid, 239, 233, delay=3.0)
+        click_coords(wid, 239, 233, delay=1.2)
         print("[*] Clicking Quick Battle (randomized factions & armies)...")
-        click_coords(wid, 239, 395, delay=2.5)
+        click_coords(wid, 239, 395, delay=1.0)
 
         # 3. Wait for tactical battlefield loading (STATE != 0)
         print(f"[*] Waiting for tactical battle to load on {CONTAINER}...")

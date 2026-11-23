@@ -27,9 +27,11 @@ STATUS_NAMES = {
     0: ("MOVE", (180, 255, 180))
 }
 
-def render_frame(frame, prev_frame, bounds, battle_id, total_t):
+def render_frame(frame, prev_frame, bounds, battle_id, total_t, terrain=None):
     img = Image.new("RGB", (WIDTH, HEIGHT), (18, 24, 22))
     draw = ImageDraw.Draw(img)
+    terrain = terrain or {}
+    btype = terrain.get("battle_type", "open_field")
     
     # Map area: x from 40 to 980, y from 60 to 660 (940x600)
     MAP_X0, MAP_Y0, MAP_W, MAP_H = 40, 60, 940, 620
@@ -49,6 +51,59 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
         sx = MAP_X0 + int(((wx - min_x) / span_x) * (MAP_W - 80)) + 40
         sy = MAP_Y0 + int(((wy - min_y) / span_y) * (MAP_H - 80)) + 40
         return max(MAP_X0 + 10, min(MAP_X0 + MAP_W - 10, sx)), max(MAP_Y0 + 10, min(MAP_Y0 + MAP_H - 10, sy))
+
+    # Draw River Crossing or Siege Fortress overlays
+    if btype == "river_crossing":
+        ry = float(terrain.get("river_y", 0.0))
+        rhw = float(terrain.get("river_half_w", 22.0))
+        _, sy1 = to_screen(0, ry - rhw)
+        _, sy2 = to_screen(0, ry + rhw)
+        r_top, r_bot = min(sy1, sy2), max(sy1, sy2)
+        draw.rectangle([MAP_X0 + 2, r_top, MAP_X0 + MAP_W - 2, max(r_top + 14, r_bot)], fill=(22, 65, 115), outline=(40, 110, 180))
+        for b in terrain.get("bridges", []):
+            bx = float(b.get("x", 0.0))
+            bw = float(b.get("width", 28.0))
+            bx1, _ = to_screen(bx - bw * 0.5, ry)
+            bx2, _ = to_screen(bx + bw * 0.5, ry)
+            is_ford = b.get("kind") == "ford"
+            b_col = (70, 125, 155) if is_ford else (130, 105, 75)
+            draw.rectangle([min(bx1, bx2) - 6, r_top - 3, max(bx1, bx2) + 6, max(r_top + 14, r_bot) + 3], fill=b_col, outline=(210, 190, 140), width=2)
+            draw.text((min(bx1, bx2) - 4, r_top - 16), "FORD" if is_ford else "BRIDGE", fill=(220, 210, 170))
+    elif btype in ("siege_assault", "siege_defense"):
+        wy = float(terrain.get("wall_y", 75.0))
+        gx = float(terrain.get("gate_x", 0.0))
+        px = float(terrain.get("plaza_x", 0.0))
+        py = float(terrain.get("plaza_y", 215.0))
+        pr = float(terrain.get("plaza_r", 45.0))
+        gate_hp = float(frame.get("gate_hp", 100.0))
+        ladders = frame.get("ladders", [False, False])
+        p_timer = float(frame.get("plaza_timer", 0.0))
+
+        # Town Plaza circle
+        psx, psy = to_screen(px, py)
+        pr_px = max(22, int((pr / span_x) * (MAP_W - 80)))
+        draw.ellipse([psx - pr_px, psy - pr_px, psx + pr_px, psy + pr_px], outline=(240, 200, 60), width=2)
+        draw.text((psx - 32, psy - 6), f"PLAZA {p_timer:.0f}/30s", fill=(240, 210, 80))
+
+        # Stone Fortress Wall line
+        _, w_sy = to_screen(0, wy)
+        draw.rectangle([MAP_X0 + 4, w_sy - 5, MAP_X0 + MAP_W - 4, w_sy + 5], fill=(110, 110, 118), outline=(170, 170, 180), width=2)
+
+        # Gatehouse
+        gsx, _ = to_screen(gx, wy)
+        g_col = (40, 160, 70) if gate_hp <= 0 else (165, 85, 45)
+        draw.rectangle([gsx - 24, w_sy - 10, gsx + 24, w_sy + 10], fill=g_col, outline=(240, 210, 120), width=2)
+        g_txt = "GATE OPEN!" if gate_hp <= 0 else f"GATE {gate_hp:.0f}%"
+        draw.text((gsx - 28, w_sy - 24), g_txt, fill=(100, 255, 130) if gate_hp <= 0 else (255, 200, 110))
+
+        # Left / Right Ladder & Siege Tower sections
+        for idx_l, lx in enumerate((gx - 95.0, gx + 95.0)):
+            lsx, _ = to_screen(lx, wy)
+            docked = ladders[idx_l] if idx_l < len(ladders) else False
+            l_col = (60, 190, 110) if docked else (85, 85, 95)
+            draw.rectangle([lsx - 14, w_sy - 8, lsx + 14, w_sy + 8], fill=l_col, outline=(200, 200, 210), width=1)
+            if docked:
+                draw.text((lsx - 22, w_sy + 11), "LADDERS UP", fill=(120, 255, 160))
 
     # Parse units: [side, id, x, y, hp_percent, morale, status, lastAction, symbol, (optional) fleeing]
     units = frame.get("units", [])
@@ -84,9 +139,13 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
         if fleeing:
             draw.line([(sx - R + 3, sy - R + 3), (sx + R - 3, sy + R - 3)], fill=(255, 200, 50), width=2)
         
-        # Symbol
+        # Symbol & Siege Equipment tag ([RAM] / [LAD])
         role_txt = sym[0].upper() if sym else "U"
         draw.text((sx - 4, sy - 7), role_txt, fill=(255, 255, 255))
+        equip = u[10] if len(u) > 10 else ""
+        if equip:
+            draw.rectangle([sx - 15, sy - R - 19, sx + 15, sy - R - 8], fill=(180, 110, 30), outline=(255, 220, 100))
+            draw.text((sx - 11, sy - R - 19), equip, fill=(255, 255, 220))
         
         # Status text & HP bar
         if fleeing:
@@ -107,7 +166,7 @@ def render_frame(frame, prev_frame, bounds, battle_id, total_t):
     draw.rectangle([0, 0, WIDTH, 50], fill=(12, 16, 14))
     draw.line([(0, 50), (WIDTH, 50)], fill=(50, 75, 65), width=2)
     
-    draw.text((40, 14), f"BATTLE REPLAY #{battle_id}", fill=(230, 230, 230))
+    draw.text((40, 14), f"BATTLE #{battle_id} [{btype.upper().replace('_', ' ')}]", fill=(230, 230, 230))
     draw.text((320, 14), f"TIME: {t:.1f}s / {total_t:.1f}s", fill=(200, 255, 120))
     
     # Side indicators
@@ -170,11 +229,19 @@ def expand_frames_for_duration(frames, target_secs=30.0, fps=10):
                 row = [ua[0], ua[1], nx, ny, nhp, src[5], src[6], src[7], ua[8]]
                 if len(src) > 9:
                     row.append(src[9])
+                if len(src) > 10:
+                    row.append(src[10])
                 interp_units.append(row)
             else:
                 interp_units.append(ua)
         nt = fa.get("t", 0) + alpha * (fb.get("t", 0) - fa.get("t", 0))
-        out.append({"t": round(nt, 1), "units": interp_units})
+        out.append({
+            "t": round(nt, 1),
+            "units": interp_units,
+            "gate_hp": fa.get("gate_hp", 100.0),
+            "ladders": fa.get("ladders", [False, False]),
+            "plaza_timer": fa.get("plaza_timer", 0.0),
+        })
     return out
 
 
@@ -212,20 +279,29 @@ def render_replay(json_path, output_mp4=None):
             max_y = max(max_y, wy)
     bounds = (min_x, max_x, min_y, max_y)
     total_t = frames[-1].get("t", 0) if frames else 0
+    terrain = data.get("terrain") or {"battle_type": data.get("battle_type", "open_field")}
     
-    # Pipe raw RGB24 frames into container ffmpeg
-    container_out = output_mp4.replace("/home/tomek/medieval2-docker/workspace", "/home/tomek/workspace")
-    cmd = (
-        f"docker exec -i medieval2-ubuntu ffmpeg -y "
-        f"-f rawvideo -vcodec rawvideo -s {WIDTH}x{HEIGHT} -pix_fmt rgb24 -r {fps} -i - "
-        f"-c:v libx264 -preset fast -pix_fmt yuv420p {container_out}"
-    )
+    # Pipe raw RGB24 frames into local ffmpeg (fallback to imageio_ffmpeg)
+    import shutil
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        try:
+            import imageio_ffmpeg
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            ffmpeg_bin = "ffmpeg"
+    cmd = [
+        ffmpeg_bin, "-y",
+        "-f", "rawvideo", "-vcodec", "rawvideo", "-s", f"{WIDTH}x{HEIGHT}",
+        "-pix_fmt", "rgb24", "-r", str(fps), "-i", "-",
+        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", output_mp4,
+    ]
     
-    proc = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     
     prev_fr = None
     for idx, fr in enumerate(frames):
-        img = render_frame(fr, prev_fr, bounds, battle_id, total_t)
+        img = render_frame(fr, prev_fr, bounds, battle_id, total_t, terrain=terrain)
         prev_fr = fr
         proc.stdin.write(img.tobytes())
         

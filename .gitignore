@@ -51,13 +51,24 @@ wheels/
 workspace/episodes/
 workspace/replays/
 workspace/processed/
+workspace/processed_old/
+workspace/episodes_archive/
+workspace/archive_*/
+workspace/checkpoints/
 workspace/*.png
 workspace/*.log
-workspace/m2tweop_loaded.txt
-workspace/rl_status.txt
-workspace/wine_crash.log
-workspace/weights_latest.json
-workspace/scenario.json
+workspace/*.txt
+workspace/*.json
+workspace/*.pt
+workspace/*.npz
+workspace/*.tmp
+workspace/*.pid
+workspace/.battle_id.lock
+workspace_sim/
+backups/
+scratch/
+sim_data/
+*backup*.py
 
 # Keep trainer source code inside workspace/
 !workspace/trainer/
