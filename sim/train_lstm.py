@@ -29,22 +29,32 @@ if os.path.exists(env_file):
 from combat import BattleSim  # noqa: E402
 from edu_parser import build_faction_pools, parse_edu, parse_projectiles  # noqa: E402
 from lstm_env import run_lstm_battle  # noqa: E402
-from lstm_model import FullArmyLSTM, load_lstm, save_lstm, update_batch, update_imitation_batch  # noqa: E402
+from lstm_model import FullArmyLSTM, compute_step_shaping, load_lstm, save_lstm, update_batch, update_imitation_batch  # noqa: E402
+from physics_world_model import load_physics_net  # noqa: E402
 import scenario_generator as sg  # noqa: E402
 
 _G_PROJS = None
 _G_POOLS = None
 _G_MODEL = None
+_G_DMG_NET = None
+_G_MOR_NET = None
 
 
 def _init_worker():
-    global _G_PROJS, _G_POOLS, _G_MODEL
+    global _G_PROJS, _G_POOLS, _G_MODEL, _G_DMG_NET, _G_MOR_NET
     torch.set_num_threads(1)
     _G_PROJS = parse_projectiles()
     units = parse_edu()
     _G_POOLS = build_faction_pools(units)
     _G_MODEL = FullArmyLSTM()
     _G_MODEL.eval()
+    dmg_p = os.path.join(ROOT_DIR, "workspace", "damage_net.pt")
+    mor_p = os.path.join(ROOT_DIR, "workspace", "morale_net.pt")
+    if os.path.exists(dmg_p) and os.path.exists(mor_p):
+        _G_DMG_NET = load_physics_net(dmg_p, target_kind="damage")
+        _G_MOR_NET = load_physics_net(mor_p, target_kind="morale")
+        _G_DMG_NET.eval()
+        _G_MOR_NET.eval()
 
 
 def _pick_army(faction, counts, rng):
@@ -70,7 +80,10 @@ def _run_one_lstm(args):
         deploy0=sc["sides"][0].get("deploy"), deploy1=sc["sides"][1].get("deploy"),
         terrain=sc.get("terrain"),
     )
-    ep, rep = run_lstm_battle(sim, bid, _G_MODEL, inv_temp=inv_temp, greedy=greedy, record_replay=rec_rep, phase=phase)
+    ep, rep = run_lstm_battle(
+        sim, bid, _G_MODEL, inv_temp=inv_temp, greedy=greedy,
+        record_replay=rec_rep, phase=phase, dmg_net=_G_DMG_NET, mor_net=_G_MOR_NET,
+    )
     if rep is not None:
         rpath = os.path.join(ws, "replays", f"replay_{bid}.json")
         rep_str = json.dumps(rep)
@@ -207,6 +220,7 @@ def main():
                 if cur_phase >= 2:
                     s["recent"].append(ep["result"])
                 # Dashboard-compatible episode summary
+                mp_arr, lr_arr = compute_step_shaping(ep["steps"])
                 ep_lite = {
                     "battle_id": n,
                     "phase": cur_phase,
@@ -219,10 +233,9 @@ def main():
                     "own_loss_frac": ep["own_loss_frac"],
                     "decisive_win": ep["decisive_win"],
                     "decisive_loss": ep["decisive_loss"],
-                    "units": [{
-                        "role": "army",
-                        "steps": [{"dk": st_s["dk"], "dl": st_s["dl"], "coh": st_s["coh"]} for st_s in ep["steps"]],
-                    }],
+                    "move_pen": round(float(mp_arr.sum()), 3),
+                    "line_rew": round(float(lr_arr.sum()), 3),
+                    "units": [],
                 }
                 json.dump(ep_lite, open(P("processed", f"episode_{n}.json"), "w"))
 

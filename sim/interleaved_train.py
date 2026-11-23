@@ -177,6 +177,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sim-battles", type=int, default=1000)
     ap.add_argument("--m2tw-battles", type=int, default=100)
+    ap.add_argument("--m2tw-min-sim-wr", type=float, default=30.0, help="Stay in Phase 2 (Sim-only) until Sim WR500 >= this %%, then unlock Phase 2.5 (Hybrid Sim+M2TW)")
     ap.add_argument("--batch", type=int, default=10)
     ap.add_argument("--m2tw-batch", type=int, default=0, help="Override batch size for M2TW stage (0 = use --batch)")
     ap.add_argument("--m2tw-train-full", action="store_true", help="Train the entire network (L1+L2+L3) on M2TW battles and sync L1/L2 back to Sim")
@@ -256,11 +257,36 @@ def main():
         else:
             sync_sim_to_m2tw(preserve_adapter=not (args.fresh and cycle == 1))
 
-        # Stage B: Real Medieval II battles
-        sim_state_now = json.load(open(os.path.join(WS_SIM, "state.json"))) if os.path.exists(os.path.join(WS_SIM, "state.json")) else {}
-        if args.arch == "lstm" and sim_state_now.get("phase", 2) == 1:
-            print(f"[*] Cycle {cycle} still in LSTM Phase-1 Imitation (battle #{sim_state_now.get('battle', 0)}); continuing Sim imitation before M2TW RL.", flush=True)
+        # Stage B: Real Medieval II battles (Phase 2.5 Hybrid — gated on Sim WR >= --m2tw-min-sim-wr)
+        state_path = os.path.join(WS_SIM, "state.json")
+        sim_state_now = json.load(open(state_path)) if os.path.exists(state_path) else {}
+        if args.arch == "lstm" and float(sim_state_now.get("phase", 2)) < 2.0:
+            print(f"[*] Cycle {cycle} still in LSTM Phase-1 Imitation (battle #{sim_state_now.get('battle', 0)}); continuing Sim imitation before RL.", flush=True)
             continue
+
+        cur_phase_val = float(sim_state_now.get("phase", 2))
+        rec_list = sim_state_now.get("recent", [])
+        sim_wr500 = (100.0 * sum(1 for r in rec_list if r > 0) / len(rec_list)) if rec_list else 0.0
+        hybrid_unlocked = (cur_phase_val >= 2.5)
+        if not hybrid_unlocked and sim_wr500 >= args.m2tw_min_sim_wr:
+            hybrid_unlocked = True
+            sim_state_now["phase"] = 2.5
+            tmp_s = state_path + ".tmp"
+            json.dump(sim_state_now, open(tmp_s, "w"))
+            os.replace(tmp_s, state_path)
+            print(
+                f"\n[+] SIM WR500 REACHED {sim_wr500:.1f}% (>= {args.m2tw_min_sim_wr:.1f}%) -> UNLOCKING PHASE 2.5 HYBRID (3k Sim + 100 M2TW)!\n",
+                flush=True,
+            )
+
+        if args.arch == "lstm" and not hybrid_unlocked:
+            print(
+                f"[*] Phase 2 (Sim-only): Sim WR500={sim_wr500:.1f}% < {args.m2tw_min_sim_wr:.1f}% target — "
+                f"skipping M2TW & evals until Phase 2.5 (30% Sim WR) is unlocked.",
+                flush=True,
+            )
+            continue
+
         m2tw_mode = "rl_vs_vanilla" if args.arch == "lstm" else ("vanilla_vs_vanilla" if sim_state_now.get("phase", 2) == 1 else "rl_vs_vanilla")
         m2tw_bs = args.m2tw_batch if args.m2tw_batch > 0 else args.batch
         print(
@@ -324,10 +350,10 @@ def main():
             })
             json.dump(history, open(hist_path, "w"), indent=2)
 
-        # Run combined Sim (N=500) + Real M2TW (N=20) benchmark every eval_interval sim battles (e.g. 3k, 6k, 9k...)
+        # Run combined Sim (N=200) + Real M2TW (N=20) benchmark every eval_interval Phase-2 sim battles
         sim_state_end = json.load(open(os.path.join(WS_SIM, "state.json"))) if os.path.exists(os.path.join(WS_SIM, "state.json")) else {}
         cur_sim_b = int(sim_state_end.get("battle", cycle * args.sim_battles))
-        if args.eval_interval > 0 and cur_sim_b > 0 and (cur_sim_b % args.eval_interval == 0):
+        if args.eval_interval > 0 and ((cycle * args.sim_battles) % args.eval_interval == 0):
             run_combined_benchmark(cur_sim_b, args)
 
 

@@ -7,9 +7,11 @@ active friendly units simultaneously every 4.5s game tick.
 import math
 from typing import Dict, List, Optional, Tuple
 import numpy as np
+import torch
 
 from combat import BattleSim, SimUnit, clamp
 from lstm_model import BATTLE_TYPES, GLOBAL_FEAT, MAX_UNITS, OBS_DIM, UNIT_FEAT, FullArmyLSTM
+from physics_world_model import UnitSelfAttentionNet, obs_to_unit_nodes
 from rl_env import _army_spread, _cohesion_reward, _inf_centroid, _issue_action, _to_rel
 from spec import NUM_ACTIONS, ROLES, imitation_reward
 from vanilla_ai import step_vanilla_ai
@@ -178,6 +180,53 @@ def _vanilla_target_action(u: SimUnit, prev_x: float, prev_y: float, en: List[Si
     return best_a
 
 
+@torch.no_grad()
+def _apply_neural_physics(
+    sim: BattleSim,
+    obs: np.ndarray,
+    own_slots: List[Optional[SimUnit]],
+    en_slots: List[Optional[SimUnit]],
+    dmg_net: UnitSelfAttentionNet,
+    mor_net: UnitSelfAttentionNet,
+):
+    """Apply Phase-0 Self-Attention DamageNet (subtract HP) & MoraleNet (assign morale) to every alive unit."""
+    nodes, alive = obs_to_unit_nodes(obs)
+    if alive.sum() < 1.0:
+        return
+    n_t = torch.from_numpy(nodes[None])
+    m_t = torch.from_numpy(alive[None])
+    pred_dhp = dmg_net(n_t, m_t)[0].numpy()
+    pred_mor = mor_net(n_t, m_t)[0].numpy()
+
+    all_slots = list(own_slots) + list(en_slots)
+    for idx, u in enumerate(all_slots):
+        if u is None or u.alive <= 0:
+            continue
+        # Subtract predicted damage fraction from unit HP
+        dhp = float(pred_dhp[idx])
+        if dhp > 0.002:
+            hp_loss = dhp * float(u.start * u.tpl.hp)
+            u.hp_pool = max(0.0, u.hp_pool - hp_loss)
+            new_alive = max(0, min(u.alive, int(math.ceil(u.hp_pool / max(1.0, float(u.tpl.hp))))))
+            lost = u.alive - new_alive
+            if lost > 0:
+                u.alive = new_alive
+                u.recent_loss += lost / max(1, u.start)
+                if u.alive <= 0 and u.role == "general" and sim.general_dead_time[u.side] is None:
+                    sim.general_dead_time[u.side] = sim.t
+        # Assign predicted morale directly to unit
+        if u.alive > 0:
+            m_val = float(clamp(float(pred_mor[idx]), 0.0, 1.0))
+            u.morale = m_val * 12.0
+            u.morale_level = int(round(m_val * 6.0))
+            if u.morale_level <= 0:
+                u.routing = True
+                u.rout_count += 1
+            elif u.routing and u.morale_level >= 2 and not u.shattered:
+                u.routing = False
+                u.order_kind = "hold"
+
+
 def run_lstm_battle(
     sim: BattleSim,
     battle_id: int,
@@ -186,7 +235,11 @@ def run_lstm_battle(
     greedy: bool = False,
     record_replay: bool = False,
     phase: int = 2,
+    dmg_net: Optional[UnitSelfAttentionNet] = None,
+    mor_net: Optional[UnitSelfAttentionNet] = None,
 ) -> Tuple[dict, Optional[dict]]:
+    use_neural_phys = (dmg_net is not None and mor_net is not None)
+    sim.neural_physics = use_neural_phys
     own = sim.sides[0]
     en = sim.sides[1]
     fr0 = _army_frame(own, en)
@@ -221,7 +274,7 @@ def run_lstm_battle(
                     _issue_action(acts[i], u, en, fr, sim=sim)
                     u.last_a = acts[i]
 
-        # Advance physics for DECISION_DT (4.5s) in 0.5s substeps
+        # Advance physics for DECISION_DT (4.0s) in 1.0s substeps
         n_sub = int(round(DECISION_DT / SUB_DT))
         for _ in range(n_sub):
             if sim.is_done():
@@ -230,6 +283,10 @@ def run_lstm_battle(
                 step_vanilla_ai(sim, 0)
             step_vanilla_ai(sim, 1)
             sim.step(SUB_DT)
+
+        # Apply Phase-0 learned DamageNet & MoraleNet once per tick when active
+        if use_neural_phys and not sim.is_done():
+            _apply_neural_physics(sim, obs, own_slots, en_slots, dmg_net, mor_net)
 
         if phase == 1:
             for i, u in enumerate(own_slots):
@@ -259,10 +316,17 @@ def run_lstm_battle(
                     cohs.append(_cohesion_reward(u, inf_cx, inf_cy, spread))
         mean_coh = float(sum(cohs) / len(cohs)) if cohs else 0.0
 
+        moved_dists = []
+        for i, u in enumerate(own_slots):
+            if u is not None and u.active and mask[i] > 0.5:
+                moved_dists.append(math.hypot(u.x - prev_pos[i][0], u.y - prev_pos[i][1]))
+        mean_move_m = float(sum(moved_dists) / len(moved_dists)) if moved_dists else 0.0
+
         steps.append({
             "obs": obs.tolist(),
             "mask": mask.tolist(),
             "acts": acts,
+            "move_m": round(mean_move_m, 3),
             "dk": round(dk, 5),
             "dl": round(dl, 5),
             "coh": round(mean_coh, 5),
@@ -271,16 +335,35 @@ def run_lstm_battle(
         })
 
         if record_replay and (tick % 2 == 0 or sim.is_done()):
+            sym_map = {"line_inf": "I", "spear_inf": "S", "shock_cav": "C", "missile_foot": "M", "missile_cav": "H", "artillery": "A", "general": "G"}
+            frame_units = []
+            for s_idx, side_num in ((0, 1), (1, 2)):
+                for u in sim.sides[s_idx]:
+                    if u.alive <= 0:
+                        continue
+                    hp_pct = int(round(100.0 * u.alive / max(1, u.start)))
+                    if u.routing:
+                        st_code = 6
+                    elif u.engaged:
+                        st_code = 4
+                    elif u.tpl.is_missile and u.ammo > 0 and u.fire_cooldown > 0:
+                        st_code = 5
+                    elif u.order_kind in ("move", "attack"):
+                        st_code = 0
+                    else:
+                        st_code = 3
+                    frame_units.append([
+                        side_num, u.uid, round(u.x, 1), round(u.y, 1),
+                        hp_pct, u.morale_level, st_code, u.last_a if s_idx == 0 else -1,
+                        sym_map.get(u.role, "I"), u.routing,
+                        "RAM" if u.has_ram else ("LAD" if u.has_ladder else ""),
+                    ])
             replay_frames.append({
                 "t": round(sim.t, 1),
-                "units": [
-                    {
-                        "s": u.side, "r": u.role, "x": round(u.x, 1), "y": round(u.y, 1),
-                        "a": u.alive, "m": u.start, "rt": 1 if u.routing else 0,
-                        "en": 1 if u.engaged else 0, "act": u.last_a if u.side == 0 else -1,
-                    }
-                    for u in sim.units if u.alive > 0
-                ],
+                "units": frame_units,
+                "gate_hp": round(sim.gate_hp, 1),
+                "ladders": [sim.ladder_left_docked, sim.ladder_right_docked],
+                "plaza_timer": round(sim.plaza_timer, 1),
             })
 
     res_i = int(sim.result())

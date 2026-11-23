@@ -159,7 +159,7 @@ def evaluate_replay(replay_text):
     from google import genai
     import time
     client = genai.Client(api_key=api_key)
-    candidates = [GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-3.5-flash"]
+    candidates = [GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
     last_err = None
     formatted = format_replay_text(replay_text)
     for idx, model in enumerate(candidates):

@@ -107,22 +107,40 @@ class UnitSelfAttentionNet(nn.Module):
         self.head = nn.Linear(d_model, 1)
 
     def forward(self, nodes: torch.Tensor, alive_mask: torch.Tensor) -> torch.Tensor:
-        """nodes: (B, 48, 23), alive_mask: (B, 48) -> pred: (B, 48) in [0, 1]."""
-        h = F.silu(self.ln1(self.in_proj(nodes)))
+        """nodes: (B, 48, 27), alive_mask: (B, 48) -> pred: (B, 48) in [0, 1].
+
+        Self-masking with diagonal attention:
+          - MoraleNet: unit i NEVER sees its own current morale (idx 4) or routing (idx 9),
+            only other units' morale/routing via cross-unit self-attention.
+          - DamageNet: unit i NEVER sees its own current hp_frac (idx 3),
+            only other units' hp_frac (enemy strength attacking it) via cross-unit self-attention.
+        """
         key_pad = (alive_mask <= 0.5)  # True = ignore
-        # Guard against all-masked rows
         all_pad = key_pad.all(dim=-1, keepdim=True)
         safe_pad = key_pad & (~all_pad)
-        attn_out, _ = self.attn(h, h, h, key_padding_mask=safe_pad, need_weights=False)
-        h = self.ln2(h + attn_out)
+
+        q_nodes = nodes.clone()
+        if self.target_kind == "morale":
+            q_nodes[:, :, 4] = 0.0
+            q_nodes[:, :, 9] = 0.0
+        else:
+            q_nodes[:, :, 3] = 0.0
+
+        h_q = F.silu(self.ln1(self.in_proj(q_nodes)))
+        h_kv = F.silu(self.ln1(self.in_proj(nodes)))
+        N = nodes.shape[1]
+        diag_mask = torch.eye(N, dtype=torch.bool, device=nodes.device)
+        if (alive_mask.sum(dim=-1) <= 1.5).any():
+            attn_out, _ = self.attn(h_q, h_kv, h_kv, key_padding_mask=safe_pad, need_weights=False)
+        else:
+            attn_out, _ = self.attn(h_q, h_kv, h_kv, key_padding_mask=safe_pad, attn_mask=diag_mask, need_weights=False)
+        h = self.ln2(h_q + attn_out)
         h = self.ln3(h + self.ffn(h))
         raw = self.head(h).squeeze(-1)
-        if self.target_kind == "damage":
-            # Small non-negative per-tick damage fraction in [0, 1]
-            return torch.sigmoid(raw - 3.0)
-        # Residual update on current morale (index 4) clamped to [0, 1]
-        cur_mor = nodes[:, :, 4]
-        return torch.clamp(cur_mor + 0.5 * torch.tanh(raw), 0.0, 1.0)
+        if self.target_kind == "morale":
+            return torch.sigmoid(raw)
+        # DamageNet: small non-negative per-tick damage fraction in [0, 1]
+        return torch.sigmoid(raw - 3.0)
 
 
 def save_physics_net(model: UnitSelfAttentionNet, path: str):

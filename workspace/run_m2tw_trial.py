@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -254,6 +255,18 @@ def main():
                             f"Running WR={s['win_rate_pct']:5.1f}% ({s['wins']}W/{s['losses']}L/{s['draws']}D) | AvgDmg={s['avg_enemy_dmg_pct']:5.1f}%",
                             flush=True,
                         )
+                        # Permanently archive every 26-feature real M2TW battle for DamageNet/MoraleNet physics training
+                        try:
+                            steps_ep = ep.get("steps") or []
+                            if len(steps_ep) >= 2 and len(steps_ep[0].get("obs", [])) == 1260:
+                                phys_dir = os.path.join(BASE_DIR, "dataset_m2tw_physics")
+                                os.makedirs(phys_dir, exist_ok=True)
+                                ep_src_phys = os.path.join(WORKSPACE, "episodes", f"episode_{curr_id}.json")
+                                if os.path.exists(ep_src_phys):
+                                    dst_phys = os.path.join(phys_dir, f"m2tw_{int(time.time())}_ep{curr_id}.json")
+                                    shutil.copy2(ep_src_phys, dst_phys)
+                        except Exception:
+                            pass
                         if is_lstm and args.train_lstm and lstm_mod is not None:
                             lstm_ep_buf.append(ep)
                             if len(lstm_ep_buf) >= args.batch_size:

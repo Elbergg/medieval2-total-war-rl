@@ -115,6 +115,7 @@ class BattleSim:
         self.hill_phy = self.rng.uniform(0.0, 6.283)
         self.unit_size_scale = float(self.rng.choice([0.45, 0.65, 1.0]))
         self.t = 0.0
+        self.neural_physics = False
         self.units: List[SimUnit] = []
         self.sides: List[List[SimUnit]] = [[], []]
         self.general_dead_time: List[Optional[float]] = [None, None]
@@ -389,8 +390,9 @@ class BattleSim:
         if self.battle_type in ("siege_assault", "siege_defense"):
             self._update_siege(dt)
 
-        # 5. Morale & routing
-        self._update_morale(dt)
+        # 5. Morale & routing (skipped when Phase-0 MoraleNet drives morale directly)
+        if not self.neural_physics:
+            self._update_morale(dt)
 
     def _blocked_by_barrier(self, a: SimUnit, b: SimUnit) -> bool:
         if self.battle_type == "river_crossing" and self.bridges:
@@ -849,7 +851,7 @@ class BattleSim:
                     self.wall_right_hp = max(0.0, self.wall_right_hp - 22.0)
 
     def _deal_damage(self, target: SimUnit, dmg: float, attacker: Optional[SimUnit] = None):
-        if target.alive <= 0 or dmg <= 0:
+        if self.neural_physics or target.alive <= 0 or dmg <= 0:
             return
         # Stochastic rounding for fractional damage so small skirmishes still kill men
         whole = int(dmg)

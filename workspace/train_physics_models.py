@@ -18,29 +18,35 @@ import torch
 BASE = "/home/tomek/medieval2-docker"
 WS_M2TW = os.path.join(BASE, "workspace")
 WS_SIM = os.path.join(BASE, "workspace_sim")
+DATASET_DIR = os.path.join(BASE, "dataset_m2tw_physics")
 PY = os.path.join(BASE, ".venv", "bin", "python")
 
 sys.path.insert(0, os.path.join(WS_M2TW, "trainer"))
 import physics_world_model as pwm  # noqa: E402
-
-
 from lstm_model import OBS_DIM  # noqa: E402
 
 
 def load_m2tw_lstm_episodes():
-    """Load ONLY real M2TW episodes that have all 26 real unit attributes (obs_len == OBS_DIM = 1260)."""
-    paths = sorted(
-        glob.glob(os.path.join(WS_M2TW, "processed", "episode_*.json"))
-        + glob.glob(os.path.join(WS_M2TW, "episodes", "episode_*.json")),
-        key=os.path.getmtime,
-    )
-    seen = set()
+    """Archive and load ALL real M2TW episodes with all 26 unit attributes (obs_len == 1260)."""
+    import shutil
+    os.makedirs(DATASET_DIR, exist_ok=True)
+    for src_dir in (os.path.join(WS_M2TW, "processed"), os.path.join(WS_M2TW, "episodes")):
+        for p in glob.glob(os.path.join(src_dir, "episode_*.json")):
+            dst = os.path.join(DATASET_DIR, os.path.basename(p))
+            if os.path.exists(dst):
+                continue
+            try:
+                ep = json.load(open(p))
+                steps = ep.get("steps") or []
+                if ep.get("arch") == "lstm" and len(steps) >= 4 and len(steps[0].get("obs") or []) == OBS_DIM:
+                    shutil.copy2(p, dst + ".tmp")
+                    os.replace(dst + ".tmp", dst)
+            except Exception:
+                pass
+
+    paths = sorted(glob.glob(os.path.join(DATASET_DIR, "episode_*.json")), key=os.path.getmtime)
     eps = []
     for p in paths:
-        bid = os.path.basename(p)
-        if bid in seen:
-            continue
-        seen.add(bid)
         try:
             ep = json.load(open(p))
             steps = ep.get("steps") or []
@@ -83,7 +89,11 @@ def main():
     mor_net = pwm.load_physics_net(mor_path, target_kind="morale")
     dmg_opt = torch.optim.AdamW(dmg_net.parameters(), lr=args.lr, weight_decay=1e-4)
     mor_opt = torch.optim.AdamW(mor_net.parameters(), lr=args.lr, weight_decay=1e-4)
+    dmg_sched = torch.optim.lr_scheduler.ReduceLROnPlateau(dmg_opt, mode="min", factor=0.6, patience=2, min_lr=1e-4)
+    mor_sched = torch.optim.lr_scheduler.ReduceLROnPlateau(mor_opt, mode="min", factor=0.6, patience=2, min_lr=1e-4)
     hist = json.load(open(hist_path)) if (os.path.exists(hist_path) and not args.fresh) else []
+    best_dmg_err = min((r.get("dmg_cum_err_pct", 100.0) for r in hist), default=100.0)
+    best_mor_err = min((r.get("mor_final_err_pct", 100.0) for r in hist), default=100.0)
 
     n_params = sum(p.numel() for p in dmg_net.parameters())
     print(f"[*] Physics World Model Trainer: DamageNet ({n_params:,} params) + MoraleNet ({n_params:,} params)", flush=True)
@@ -132,11 +142,18 @@ def main():
         dmg_loss = pwm.train_physics_epoch(dmg_net, dmg_opt, X_tr, M_tr, Yd_tr, batch_size=64, epochs=args.epochs_per_round)
         mor_loss = pwm.train_physics_epoch(mor_net, mor_opt, X_tr, M_tr, Ym_tr, batch_size=64, epochs=args.epochs_per_round)
 
-        pwm.save_physics_net(dmg_net, dmg_path)
-        pwm.save_physics_net(mor_net, mor_path)
-
         dmg_eval = pwm.evaluate_physics_net(dmg_net, val_eps)
         mor_eval = pwm.evaluate_physics_net(mor_net, val_eps)
+
+        dmg_sched.step(dmg_eval["cum_err_pct"])
+        mor_sched.step(mor_eval["cum_err_pct"])
+
+        if dmg_eval["cum_err_pct"] <= best_dmg_err or not os.path.exists(dmg_path):
+            best_dmg_err = dmg_eval["cum_err_pct"]
+            pwm.save_physics_net(dmg_net, dmg_path)
+        if mor_eval["cum_err_pct"] <= best_mor_err or not os.path.exists(mor_path):
+            best_mor_err = mor_eval["cum_err_pct"]
+            pwm.save_physics_net(mor_net, mor_path)
 
         rnd += 1
         rec = {

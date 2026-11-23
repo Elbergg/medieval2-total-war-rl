@@ -110,26 +110,30 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <div class="card full">
       <h3>
-        <span>🧠 5. Interactive 2-Layer Neural Network Snapshot Inspector (Saved Every 50 Battles)</span>
-        <span id="nnMetaLabel" style="font-size:13px;color:#38bdf8;">Click any node (Rule, Top Neuron, or Action) to inspect weights</span>
+        <span>🧠 5. Live Neural Network Inspector (Full-Army LSTM + Phase 0 Self-Attention Models)</span>
+        <span id="nnMetaLabel" style="font-size:13px;color:#38bdf8;">Inspect live layer weights, L2 norms &amp; feature sensitivities</span>
       </h3>
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
-        <div id="nnRoleTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-        <div id="nnIterList" style="display:flex;gap:6px;flex-wrap:wrap;max-height:70px;overflow-y:auto;"></div>
+        <div id="nnModelTabs" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="v-btn" id="tab-lstm" onclick="selectModernNN('lstm')">⚔️ Full-Army LSTM</button>
+          <button class="v-btn" id="tab-damage" onclick="selectModernNN('damage')">💥 DamageNet (Phase 0)</button>
+          <button class="v-btn" id="tab-morale" onclick="selectModernNN('morale')">🛡️ MoraleNet (Phase 0)</button>
+        </div>
+        <button class="v-btn" onclick="loadModernNN(curModernModel)" style="color:#38bdf8;border-color:#38bdf8;">🔄 Refresh Weights</button>
       </div>
       <div id="nnStatsBar" style="display:flex;gap:18px;flex-wrap:wrap;background:#0f172a;padding:8px 14px;border-radius:8px;border:1px solid #334155;font-size:13px;margin-bottom:10px;"></div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;">
         <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;display:flex;justify-content:center;">
-          <canvas id="nnCanvas" width="1040" height="560" style="width:100%;max-width:1040px;height:560px;cursor:pointer;"></canvas>
+          <canvas id="nnCanvas" width="1040" height="440" style="width:100%;max-width:1040px;height:440px;cursor:pointer;"></canvas>
         </div>
-        <div id="nnNodeDetail" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-size:13px;overflow-y:auto;max-height:520px;">
-          <b style="color:#facc15;">Click any neuron or action on the network diagram</b> to inspect its incoming & outgoing weights, KBANN rule couplings, recurrent memory, and learned delta since Battle #0.
+        <div id="nnNodeDetail" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-size:13px;overflow-y:auto;max-height:440px;">
+          <b style="color:#facc15;">Click any layer block on the diagram</b> to inspect its tensor shapes, L2 weight norms, max |W|, and gate/head breakdown.
         </div>
       </div>
       <div style="margin-top:12px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-size:13px;font-weight:700;color:#38bdf8;">📥 Input Features & Learned Sensitivity (Sorted by Layer-2 Weight Norm)</span>
-          <input id="nnFeatFilter" type="text" oninput="renderNNStatsAndCanvas()" placeholder="Filter canvas & table (e.g. terrain, general, morale, g[17], grid)..." style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:5px 10px;font-size:12px;min-width:300px;" />
+          <span style="font-size:13px;font-weight:700;color:#38bdf8;">📥 Input Feature Sensitivity (Sorted by Weight L2 Norm)</span>
+          <input id="nnFeatFilter" type="text" oninput="renderModernFeatTable()" placeholder="Filter features (e.g. height, walls, morale, engaged, armour)..." style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:5px 10px;font-size:12px;min-width:300px;" />
         </div>
         <div id="nnFeatTable" style="max-height:240px;overflow-y:auto;font-size:12px;"></div>
       </div>
@@ -173,9 +177,8 @@ function showBreakdown(idx) {
      <div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd5e1;">
        <span>Win/Loss Base: <b>${b.term_base.toFixed(1)}</b> (${pct(b.term_base)})</span>
        <span>Decisive Rout: <b>${b.dec_bonus.toFixed(1)}</b> (${pct(b.dec_bonus)})</span>
-       <span>Unit Kills: <b style="color:#38bdf8;">+${b.kills.toFixed(2)}</b> (${pct(b.kills)})</span>
-       <span>Unit Losses: <b style="color:#fb923c;">${b.losses.toFixed(2)}</b> (${pct(b.losses)})</span>
-       <span>Cohesion: <b style="color:#34d399;">${b.coh >= 0 ? '+' : ''}${b.coh.toFixed(2)}</b> (${pct(b.coh)})</span>
+       <span>Move Penalty: <b style="color:#fb923c;">${b.losses.toFixed(2)}</b> (${pct(b.losses)})</span>
+       <span>Straight Line: <b style="color:#34d399;">${b.coh >= 0 ? '+' : ''}${b.coh.toFixed(2)}</b> (${pct(b.coh)})</span>
        <span>LLM Judge: <b>${llmStr}</b></span>
      </div>` + (b.reasoning ? `<div style="margin-top:6px;color:#94a3b8;">Judge: ${b.reasoning}</div>` : '') + vidHtml;
 }
@@ -184,9 +187,9 @@ const penaltyChart = new Chart(document.getElementById('penaltyChart'), {
   type: 'line',
   data: { labels: [], datasets: [
     { label: 'LLM Judge Score [-15..+15] (Judged Battles)', data: [], borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.15)', borderWidth: 2.5, spanGaps: true, pointRadius: 4, tension: 0.2 },
-    { label: 'In-Battle Cohesion + Casualty (All Battles)', data: [], borderColor: '#fb923c', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-    { label: 'Net Step Shaping Reward (Kills + Cohesion - Losses)', data: [], borderColor: '#38bdf8', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-    { label: 'Combined Episode Return / Unit (All Battles)', data: [], borderColor: '#facc15', borderWidth: 1.6, pointRadius: 3, pointHoverRadius: 6, tension: 0.2 },
+    { label: 'Move Penalty + Straight-Line Shaping (All Battles)', data: [], borderColor: '#fb923c', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+    { label: 'Net Step Shaping Reward (Line Bonus - Move Penalty)', data: [], borderColor: '#38bdf8', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+    { label: 'Combined Episode Return (All Battles)', data: [], borderColor: '#facc15', borderWidth: 1.6, pointRadius: 3, pointHoverRadius: 6, tension: 0.2 },
     { label: 'Rolling 20 Combined Return', data: [], borderColor: '#22c55e', borderWidth: 2.5, pointRadius: 0, tension: 0.25 }
   ]},
   options: {
@@ -346,7 +349,8 @@ async function refresh() {
     const res = await fetch('/api/metrics');
     const d = await res.json();
     lastMetricsData = d;
-    document.getElementById('st-phase').textContent = d.phase;
+    const pLabel = d.phase === 2.5 ? '2.5 (Hybrid)' : (d.phase === 2 ? '2 (Sim RL)' : (d.phase === 1 ? '1 (Imitation)' : String(d.phase)));
+    document.getElementById('st-phase').textContent = pLabel;
     document.getElementById('st-battle').textContent = '#' + d.latest_battle;
     document.getElementById('st-wr50').textContent = d.wr50.toFixed(1) + '%';
     document.getElementById('st-wr500').textContent = (d.wr500 || 0).toFixed(1) + '%';
@@ -358,7 +362,7 @@ async function refresh() {
     if (phBar && ph.length) {
       const lp = ph[ph.length - 1];
       const tgt = lp.target_pct || 1.0;
-      if (!lp.converged) document.getElementById('st-phase').textContent = '0 (Physics)';
+      if (!lp.converged && !(d.state && d.state.battle > 0)) document.getElementById('st-phase').textContent = '0 (Physics)';
       const dmgOk = lp.dmg_cum_err_pct < tgt;
       const morOk = lp.mor_final_err_pct < tgt;
       document.getElementById('physicsMetaLabel').textContent = `Target: < ${tgt.toFixed(1)}% full-battle rollout error on held-out real M2TW battles`;
@@ -922,8 +926,220 @@ async function playReplay(bid, win, dmg, btype, src) {
   player.src = `${base}/replay_${bid}.mp4`;
   player.play().catch(() => {});
 }
+// ===== Modern Neural Network Inspector (Full-Army LSTM + Phase 0 DamageNet / MoraleNet) =====
+let curModernModel = 'damage';
+let curModernData = null;
+let modernLayerBoxes = [];
+let selectedModernIdx = -1;
+
+function selectModernNN(m) {
+  curModernModel = m;
+  selectedModernIdx = -1;
+  ['lstm', 'damage', 'morale'].forEach(k => {
+    const b = document.getElementById('tab-' + k);
+    if (b) {
+      b.style.background = (k === m) ? '#0369a1' : '#0f172a';
+      b.style.borderColor = (k === m) ? '#38bdf8' : '#334155';
+      b.style.color = (k === m) ? '#f8fafc' : '#cbd5e1';
+    }
+  });
+  loadModernNN(m);
+}
+
+async function loadModernNN(m) {
+  try {
+    const r = await fetch(`/api/nn_modern?model=${encodeURIComponent(m)}`);
+    const d = await r.json();
+    curModernData = d;
+    renderModernNN();
+  } catch (e) { console.error(e); }
+}
+
+function renderModernNN() {
+  const d = curModernData;
+  const st = document.getElementById('nnStatsBar');
+  const box = document.getElementById('nnNodeDetail');
+  const cv = document.getElementById('nnCanvas');
+  if (!cv || !st) return;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!d || !d.ok) {
+    st.innerHTML = `<span style="color:#f59e0b;">${(d && d.error) || 'Checkpoint not saved yet — will appear automatically once saved.'}</span>`;
+    renderModernFeatTable();
+    return;
+  }
+  document.getElementById('nnMetaLabel').textContent = `${d.title} | Updated: ${d.mtime}`;
+  st.innerHTML =
+    `<span><b>Model:</b> <b style="color:#38bdf8;">${d.title}</b></span>` +
+    `<span><b>Params:</b> <b style="color:#22c55e;">${d.total_params.toLocaleString()}</b></span>` +
+    `<span><b>Input:</b> <b>${d.input_desc}</b></span>` +
+    `<span><b>Output:</b> <b>${d.output_desc}</b></span>` +
+    `<span><b>Regularization:</b> <b style="color:#c084fc;">${d.reg_desc}</b></span>` +
+    `<span><b>Global L2 Norm:</b> <b style="color:#facc15;">${d.global_l2.toFixed(3)}</b></span>`;
+
+  // Draw clean left-to-right layer architecture diagram
+  const W = cv.width, H = cv.height;
+  const layers = d.layers || [];
+  modernLayerBoxes = [];
+  const n = layers.length;
+  const padX = 28, gap = 22;
+  const bw = Math.min(185, Math.floor((W - 2 * padX - Math.max(0, n - 1) * gap) / Math.max(1, n)));
+  const totalW = n * bw + Math.max(0, n - 1) * gap;
+  const startX = Math.floor((W - totalW) / 2);
+
+  layers.forEach((L, idx) => {
+    const x = startX + idx * (bw + gap);
+    const bh = 250;
+    const y = Math.floor((H - bh) / 2);
+    const isSel = (idx === selectedModernIdx);
+    modernLayerBoxes.push({ idx, x, y, w: bw, h: bh, data: L });
+
+    // Arrow from previous layer
+    if (idx > 0) {
+      const px = startX + (idx - 1) * (bw + gap) + bw;
+      const midY = y + bh / 2;
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(px + 2, midY);
+      ctx.lineTo(x - 6, midY);
+      ctx.stroke();
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.moveTo(x - 2, midY);
+      ctx.lineTo(x - 10, midY - 5);
+      ctx.lineTo(x - 10, midY + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Card background
+    ctx.fillStyle = isSel ? '#1e3a5f' : '#1e293b';
+    ctx.strokeStyle = isSel ? '#facc15' : (L.color || '#38bdf8');
+    ctx.lineWidth = isSel ? 3 : 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, bw, bh, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Header bar
+    ctx.fillStyle = L.color || '#38bdf8';
+    ctx.font = 'bold 13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(L.name, x + bw / 2, y + 26);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px system-ui';
+    ctx.fillText(L.kind, x + bw / 2, y + 46);
+
+    // Shape pill
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(x + 12, y + 60, bw - 24, 30, 6);
+    ctx.fill();
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(L.shape, x + bw / 2, y + 79);
+
+    // Stats inside block
+    ctx.textAlign = 'left';
+    ctx.font = '11px system-ui';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(`Params: ${L.params.toLocaleString()}`, x + 14, y + 114);
+    ctx.fillText(`L2 Norm: ${L.l2.toFixed(3)}`, x + 14, y + 134);
+    ctx.fillText(`Max |W|: ${L.max_abs.toFixed(3)}`, x + 14, y + 154);
+    ctx.fillText(`Mean |W|: ${L.mean_abs.toFixed(4)}`, x + 14, y + 174);
+
+    // Activity bar proportional to mean_abs
+    const barW = Math.min(bw - 28, Math.max(6, Math.round((bw - 28) * Math.min(1.0, L.mean_abs * 8.0))));
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(x + 14, y + 190, bw - 28, 10);
+    ctx.fillStyle = L.color || '#38bdf8';
+    ctx.fillRect(x + 14, y + 190, barW, 10);
+
+    // Extra note
+    if (L.note) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(L.note, x + bw / 2, y + 225);
+    }
+  });
+  ctx.textAlign = 'left';
+
+  if (selectedModernIdx >= 0 && layers[selectedModernIdx]) {
+    const L = layers[selectedModernIdx];
+    const extras = (L.details || []).map(x => `• <b>${x.k}</b>: <span style="color:#38bdf8;">${x.v}</span>`).join('<br>');
+    box.innerHTML =
+      `<div style="font-size:15px;font-weight:700;color:${L.color || '#38bdf8'};margin-bottom:6px;">${L.name} (${L.kind})</div>` +
+      `<div style="color:#cbd5e1;margin-bottom:8px;">Shape: <code>${L.shape}</code> | Params: <b>${L.params.toLocaleString()}</b></div>` +
+      `<div style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-bottom:8px;">` +
+      `<div>• L2 Norm: <b style="color:#facc15;">${L.l2.toFixed(4)}</b></div>` +
+      `<div>• Max |W|: <b style="color:#f43f5e;">${L.max_abs.toFixed(4)}</b></div>` +
+      `<div>• Mean |W|: <b style="color:#22c55e;">${L.mean_abs.toFixed(5)}</b></div>` +
+      `</div>` +
+      (extras ? `<div><b style="color:#c084fc;">Sub-Components:</b><br>${extras}</div>` : '');
+  } else if (d.extra_summary) {
+    box.innerHTML = d.extra_summary;
+  }
+  renderModernFeatTable();
+}
+
+function renderModernFeatTable() {
+  const tbl = document.getElementById('nnFeatTable');
+  if (!tbl || !curModernData || !curModernData.ok) {
+    if (tbl) tbl.innerHTML = '<div style="color:#64748b;padding:8px;">No feature sensitivities available yet.</div>';
+    return;
+  }
+  const q = (document.getElementById('nnFeatFilter')?.value || '').toLowerCase().trim();
+  const feats = (curModernData.features || []).filter(f => !q || f.name.toLowerCase().includes(q));
+  const maxN = Math.max(0.001, ...feats.map(f => f.norm));
+  tbl.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;text-align:left;">
+      <thead>
+        <tr style="border-bottom:1px solid #334155;color:#94a3b8;">
+          <th style="padding:5px;">#</th>
+          <th style="padding:5px;">Feature</th>
+          <th style="padding:5px;">Weight L2 Norm</th>
+          <th style="padding:5px;width:45%;">Relative Sensitivity</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${feats.slice(0, 40).map((f, i) => {
+          const pct = Math.round(100 * f.norm / maxN);
+          return `<tr style="border-bottom:1px solid #1e293b;">
+            <td style="padding:4px 5px;color:#64748b;">${i + 1}</td>
+            <td style="padding:4px 5px;color:#f8fafc;font-weight:600;">${f.name}</td>
+            <td style="padding:4px 5px;color:#38bdf8;font-family:monospace;">${f.norm.toFixed(4)}</td>
+            <td style="padding:4px 5px;">
+              <div style="background:#1e293b;height:8px;border-radius:4px;overflow:hidden;">
+                <div style="background:#38bdf8;height:100%;width:${pct}%;"></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+document.getElementById('nnCanvas').addEventListener('click', (ev) => {
+  const cv = document.getElementById('nnCanvas');
+  const rect = cv.getBoundingClientRect();
+  const mx = (ev.clientX - rect.left) * (cv.width / rect.width);
+  const my = (ev.clientY - rect.top) * (cv.height / rect.height);
+  for (const b of modernLayerBoxes) {
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      selectedModernIdx = b.idx;
+      renderModernNN();
+      return;
+    }
+  }
+});
+
 refresh();
+selectModernNN('damage');
 setInterval(refresh, 5000);
+setInterval(() => loadModernNN(curModernModel), 15000);
 </script>
 </body>
 </html>
@@ -985,25 +1201,35 @@ def collect_metrics():
                     tot_losses = 0.0
                     tot_coh = 0.0
                     unit_cnt = 0
-                    for u in ep.get("units", []):
-                        if u.get("role") == "commander" or not u.get("steps"):
-                            continue
-                        unit_cnt += 1
-                        for s in u.get("steps", []):
-                            dk_term = 22.5 * float(s.get("dk", 0.0))
-                            dl_pen = -2.2 * float(s.get("dl", 0.0))
-                            coh = float(s.get("coh", 0.0))
-                            coh_term = 4.25 * coh
-                            tot_kills += dk_term
-                            tot_losses += dl_pen
-                            tot_coh += coh_term
-                            step_pen += (dl_pen + coh_term)
-                            step_net += (dk_term + dl_pen + coh_term)
+                    is_lstm = (ep.get("arch") == "lstm")
+                    if is_lstm:
+                        tot_losses = float(ep.get("move_pen", 0.0))
+                        tot_coh = float(ep.get("line_rew", 0.0))
+                        step_pen = tot_losses + tot_coh
+                        step_net = tot_losses + tot_coh
+                    else:
+                        for u in ep.get("units", []):
+                            if u.get("role") == "commander" or not u.get("steps"):
+                                continue
+                            unit_cnt += 1
+                            for s in u.get("steps", []):
+                                dk_term = 22.5 * float(s.get("dk", 0.0))
+                                dl_pen = -2.2 * float(s.get("dl", 0.0))
+                                coh = float(s.get("coh", 0.0))
+                                coh_term = 4.25 * coh
+                                tot_kills += dk_term
+                                tot_losses += dl_pen
+                                tot_coh += coh_term
+                                step_pen += (dl_pen + coh_term)
+                                step_net += (dk_term + dl_pen + coh_term)
                     res = ep.get("result", 0)
                     dmg_frac = float(ep.get("enemy_damage_frac", 0.0))
                     is_dec = bool(ep.get("decisive_win"))
                     is_dec_loss = bool(ep.get("decisive_loss"))
-                    term_base = (100.0 * 0.25) if (res > 0 and not is_dec) else (100.0 * res)
+                    if is_lstm:
+                        term_base = 100.0 * res
+                    else:
+                        term_base = (100.0 * 0.25) if (res > 0 and not is_dec) else (100.0 * res)
                     if res > 0 and is_dec:
                         dec_bonus = 340.0 * max(0.5, dmg_frac)
                     elif res <= 0 and is_dec_loss:
@@ -1149,6 +1375,178 @@ def _read_physics_history():
     except Exception:
         pass
     return []
+
+
+_UNIT_26_NAMES = [
+    "exists", "rel_x (flank)", "rel_y (depth)", "hp_frac (current HP)", "morale (current)",
+    "fatigue", "ammo_frac", "engaged", "under_fire", "routing",
+    "role: line_inf", "role: spear_inf", "role: missile_foot", "role: shock_cav",
+    "role: missile_cav", "role: general", "role: artillery",
+    "stat: attack_val", "stat: armour+defence", "stat: missile_range", "stat: move_speed",
+    "stat: mass", "stat: base_morale", "stat: unit_size (start)", "terrain: height (hills)",
+    "terrain: is_on_walls", "side (+1 own / -1 enemy)",
+]
+_GLOBAL_12_NAMES = [
+    "battle: open_field", "battle: river_crossing", "battle: siege_assault", "battle: siege_defense",
+    "own_army_hp", "enemy_army_hp", "own_army_morale", "enemy_army_morale",
+    "time_frac", "own_gen_alive", "enemy_gen_alive", "siege_progress",
+]
+
+
+def get_modern_nn_snapshot(model_name: str) -> dict:
+    """Inspect live FullArmyLSTM, DamageNet, or MoraleNet PyTorch checkpoints."""
+    import time
+    import torch
+    import numpy as np
+
+    def _tstats(t):
+        a = t.detach().cpu().float().numpy()
+        return {
+            "params": int(a.size),
+            "l2": float(np.linalg.norm(a)),
+            "max_abs": float(np.max(np.abs(a))) if a.size else 0.0,
+            "mean_abs": float(np.mean(np.abs(a))) if a.size else 0.0,
+        }
+
+    if model_name == "lstm":
+        candidates = [
+            os.path.join(WORKSPACE, "weights_lstm.pt"),
+            "/home/tomek/medieval2-docker/workspace/weights_lstm.pt",
+        ]
+        path = next((p for p in candidates if os.path.exists(p)), None)
+        if not path:
+            return {"ok": False, "error": "weights_lstm.pt not saved yet (will appear once Phase 1/2 LSTM starts)."}
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        sd = ckpt["state_dict"]
+        obs_dim = int(ckpt.get("obs_dim", sd["fc_in.weight"].shape[1]))
+        h_dim = int(ckpt.get("hidden_dim", sd["fc_in.weight"].shape[0]))
+        uf = max(22, (obs_dim - 12) // 48)
+
+        fc_s = _tstats(sd["fc_in.weight"])
+        wih = sd["lstm.weight_ih_l0"]
+        whh = sd["lstm.weight_hh_l0"]
+        ih_s, hh_s = _tstats(wih), _tstats(whh)
+        act_s = _tstats(sd["actor.weight"])
+        cri_s = _tstats(sd["critic.weight"])
+
+        # LSTM gate breakdown (i, f, g, o)
+        gate_names = ["Input (i)", "Forget (f)", "Cell (g)", "Output (o)"]
+        ih_chunks = torch.chunk(wih, 4, dim=0)
+        hh_chunks = torch.chunk(whh, 4, dim=0)
+        lstm_details = [
+            {"k": f"{gn} gate ||W_ih|| / ||W_hh||", "v": f"{float(ih_chunks[k].norm()):.2f} / {float(hh_chunks[k].norm()):.2f}"}
+            for k, gn in enumerate(gate_names)
+        ]
+
+        # Per-action output norms averaged across 24 unit slots
+        act_w = sd["actor.weight"].detach().cpu().float().numpy().reshape(24, 13, h_dim)
+        act_details = [
+            {"k": UNIT_ACT_LABELS[a], "v": f"mean ||W||={float(np.linalg.norm(act_w[:, a, :], axis=-1).mean()):.3f}"}
+            for a in range(13)
+        ]
+
+        # Input feature sensitivities (aggregate unit features across 24 own + 24 enemy slots + 12 global)
+        w_in = sd["fc_in.weight"].detach().cpu().float().numpy()  # (H, obs_dim)
+        col_norms = np.linalg.norm(w_in, axis=0)
+        feats = []
+        for gi in range(min(12, obs_dim)):
+            feats.append({"name": f"global: {_GLOBAL_12_NAMES[gi]}", "norm": float(col_norms[gi])})
+        for fi in range(min(uf, 26)):
+            own_idxs = [12 + s * uf + fi for s in range(24) if 12 + s * uf + fi < obs_dim]
+            en_idxs = [12 + (24 + s) * uf + fi for s in range(24) if 12 + (24 + s) * uf + fi < obs_dim]
+            if own_idxs:
+                feats.append({"name": f"own[0..23].{_UNIT_26_NAMES[fi]}", "norm": float(np.mean(col_norms[own_idxs]))})
+            if en_idxs:
+                feats.append({"name": f"enemy[0..23].{_UNIT_26_NAMES[fi]}", "norm": float(np.mean(col_norms[en_idxs]))})
+        feats.sort(key=lambda x: x["norm"], reverse=True)
+
+        total_p = sum(int(v.numel()) for v in sd.values())
+        g_l2 = float(np.sqrt(sum(float(v.detach().cpu().float().pow(2).sum()) for v in sd.values())))
+        layers = [
+            {"name": "Input Encoder", "kind": "Linear + LN + SiLU", "shape": f"{obs_dim} → {h_dim}", "color": "#38bdf8", "note": f"12 global + 48×{uf} units", **fc_s, "details": []},
+            {"name": "Core LSTM", "kind": "Recurrent Memory", "shape": f"{h_dim} → {h_dim}", "color": "#c084fc", "note": "Carries (h_t, c_t) across battle",
+             "params": ih_s["params"] + hh_s["params"], "l2": float(np.hypot(ih_s["l2"], hh_s["l2"])),
+             "max_abs": max(ih_s["max_abs"], hh_s["max_abs"]), "mean_abs": 0.5 * (ih_s["mean_abs"] + hh_s["mean_abs"]), "details": lstm_details},
+            {"name": "Actor Head", "kind": "All-Unit Orders", "shape": f"{h_dim} → 24×13", "color": "#22c55e", "note": "Commands all 24 units at once", **act_s, "details": act_details},
+            {"name": "Value Critic", "kind": "PPO Critic V(s_t)", "shape": f"{h_dim} → 1", "color": "#facc15", "note": "Per-unit PPO (clip=0.2, 4ep)", **cri_s, "details": []},
+        ]
+        return {
+            "ok": True,
+            "title": f"Full-Army LSTM (H={h_dim})",
+            "mtime": time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(path))),
+            "total_params": total_p,
+            "global_l2": g_l2,
+            "input_desc": f"{obs_dim} floats (12 global + 48×{uf})",
+            "output_desc": "24×13 unit orders + V(s)",
+            "reg_desc": "AdamW wd=1e-3 + L2=1e-4",
+            "layers": layers,
+            "features": feats,
+            "extra_summary": "<b style='color:#38bdf8;'>Full-Army LSTM</b><br><br>Click any layer block on the left to inspect its weight norms, LSTM gates (i/f/g/o), or per-action output weights.",
+        }
+
+    # DamageNet or MoraleNet (Phase 0 Self-Attention)
+    is_dmg = (model_name == "damage")
+    fname = "damage_net.pt" if is_dmg else "morale_net.pt"
+    path = os.path.join("/home/tomek/medieval2-docker/workspace", fname)
+    if not os.path.exists(path):
+        return {"ok": False, "error": f"{fname} not saved yet (will appear after Phase 0 Round 1 finishes)."}
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    sd = ckpt["state_dict"]
+    in_dim = int(ckpt.get("in_dim", sd["in_proj.weight"].shape[1]))
+    d_model = int(ckpt.get("d_model", 64))
+    n_heads = int(ckpt.get("n_heads", 4))
+
+    ip_s = _tstats(sd["in_proj.weight"])
+    aq_s = _tstats(sd["attn.in_proj_weight"])
+    ao_s = _tstats(sd["attn.out_proj.weight"])
+    f0_s = _tstats(sd["ffn.0.weight"])
+    f2_s = _tstats(sd["ffn.2.weight"])
+    hd_s = _tstats(sd["head.weight"])
+
+    qkv = torch.chunk(sd["attn.in_proj_weight"], 3, dim=0)
+    attn_details = [
+        {"k": "Query W_Q norm", "v": f"{float(qkv[0].norm()):.3f}"},
+        {"k": "Key W_K norm", "v": f"{float(qkv[1].norm()):.3f}"},
+        {"k": "Value W_V norm", "v": f"{float(qkv[2].norm()):.3f}"},
+        {"k": "Output W_O norm", "v": f"{ao_s['l2']:.3f}"},
+    ]
+
+    w_in = sd["in_proj.weight"].detach().cpu().float().numpy()  # (d_model, in_dim)
+    col_norms = np.linalg.norm(w_in, axis=0)
+    feats = []
+    for i in range(in_dim):
+        nm = _UNIT_26_NAMES[i] if i < len(_UNIT_26_NAMES) else f"feat[{i}]"
+        feats.append({"name": nm, "norm": float(col_norms[i])})
+    feats.sort(key=lambda x: x["norm"], reverse=True)
+
+    total_p = sum(int(v.numel()) for v in sd.values())
+    g_l2 = float(np.sqrt(sum(float(v.detach().cpu().float().pow(2).sum()) for v in sd.values())))
+    accent = "#f43f5e" if is_dmg else "#38bdf8"
+    layers = [
+        {"name": "Unit Projection", "kind": "Linear + LN + SiLU", "shape": f"48×{in_dim} → {d_model}", "color": "#fb923c", "note": "Per-unit stats + height + walls", **ip_s, "details": []},
+        {"name": f"{n_heads}-Head Self-Attn", "kind": "Cross-Unit Context", "shape": f"48×{d_model} ↔ 48×{d_model}", "color": "#c084fc", "note": "Attends to all allies & enemies",
+         "params": aq_s["params"] + ao_s["params"], "l2": float(np.hypot(aq_s["l2"], ao_s["l2"])),
+         "max_abs": max(aq_s["max_abs"], ao_s["max_abs"]), "mean_abs": 0.5 * (aq_s["mean_abs"] + ao_s["mean_abs"]), "details": attn_details},
+        {"name": "FFN Block", "kind": "MLP + Residual", "shape": f"{d_model} → {d_model*2} → {d_model}", "color": "#22c55e", "note": "Non-linear interaction",
+         "params": f0_s["params"] + f2_s["params"], "l2": float(np.hypot(f0_s["l2"], f2_s["l2"])),
+         "max_abs": max(f0_s["max_abs"], f2_s["max_abs"]), "mean_abs": 0.5 * (f0_s["mean_abs"] + f2_s["mean_abs"]), "details": []},
+        {"name": "Damage Head" if is_dmg else "Morale Head", "kind": "Per-Unit Output", "shape": f"{d_model} → 1", "color": accent,
+         "note": "Subtracted from HP" if is_dmg else "Assigned to morale", **hd_s, "details": []},
+    ]
+    return {
+        "ok": True,
+        "title": f"{'DamageNet' if is_dmg else 'MoraleNet'} (Self-Attention, d={d_model})",
+        "mtime": time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(path))),
+        "total_params": total_p,
+        "global_l2": g_l2,
+        "input_desc": f"48 units × {in_dim} feats",
+        "output_desc": "48 × Δhp/tick" if is_dmg else "48 × next_morale",
+        "reg_desc": "AdamW wd=1e-4 + Attn dropout=0.05",
+        "layers": layers,
+        "features": feats,
+        "extra_summary": f"<b style='color:{accent};'>{'DamageNet' if is_dmg else 'MoraleNet'}</b><br><br>Top 5 features driving predictions:<br>" +
+                         "<br>".join(f"• <b>{f['name']}</b>: <span style='color:#38bdf8;'>{f['norm']:.3f}</span>" for f in feats[:5]),
+    }
 
 
 def _read_eval_history():
@@ -1486,6 +1884,16 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/metrics"):
             body = json.dumps(collect_metrics()).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path.startswith("/api/nn_modern"):
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(self.path).query)
+            mname = qs.get("model", ["damage"])[0]
+            body = json.dumps(get_modern_nn_snapshot(mname)).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")

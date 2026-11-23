@@ -65,6 +65,7 @@ workspace/*.tmp
 workspace/*.pid
 workspace/.battle_id.lock
 workspace_sim/
+dataset_m2tw_physics/
 backups/
 scratch/
 sim_data/
